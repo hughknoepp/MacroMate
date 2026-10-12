@@ -7,10 +7,44 @@ from datetime import datetime, date as date_type
 from nutrition import (get_daily_totals, get_rolling_average, calculate_bmi, calculate_bmr,
                        calculate_tdee, bmi_category, calorie_suggestions)
 import requests
+from werkzeug.routing import BaseConverter, ValidationError
+
+class DateConverter(BaseConverter):
+    """URL converter for ISO dates, e.g. /log/2026-10-11. Impossible dates give a 404."""
+    regex = r'\d{4}-\d{2}-\d{2}'
+
+    def to_python(self, value):
+        try:
+            return datetime.strptime(value, '%Y-%m-%d').date()
+        except ValueError:
+            raise ValidationError()
+
+    def to_url(self, value):
+        return value.isoformat() if isinstance(value, date_type) else str(value)
 
 app = Flask(__name__)
 app.config.from_object(Config)
+app.url_map.converters['date'] = DateConverter
 db.init_app(app)
+
+@app.before_request
+def redirect_trailing_slash():
+    """Every URL has one canonical form with no trailing slash: /login/ -> /login."""
+    if request.path != '/' and request.path.endswith('/'):
+        canonical = request.path.rstrip('/') or '/'
+        if request.query_string:
+            canonical += '?' + request.query_string.decode()
+        return redirect(canonical, code=308)  # 308 keeps the HTTP method
+
+def is_safe_redirect_target(target):
+    """True only for a plain path on this site, like /log/search (prevents open redirects).
+
+    Anything that could be read as another host is refused: absolute URLs, '//host' and
+    '///host', backslashes, and control characters (browsers strip tabs/newlines from URLs,
+    so '/<TAB>/host' would otherwise turn into '//host').
+    """
+    return (bool(target) and target.isprintable() and target.startswith('/')
+            and not target.startswith('//') and '\\' not in target)
 
 login_manager = LoginManager()
 login_manager.login_view = 'login'
@@ -50,6 +84,11 @@ def register():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    # Flask-Login sends people here as /login?next=/some/page; go back there afterwards
+    next_url = request.args.get('next')
+    if not is_safe_redirect_target(next_url):
+        next_url = None
+
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -58,11 +97,11 @@ def login():
         if user and user.check_password(password):
             login_user(user)
             flash('Login successful!')
-            return redirect(url_for('dashboard'))
+            return redirect(next_url or url_for('dashboard'))
         else:
             flash('Invalid username or password')
-            return redirect(url_for('login'))
-    
+            return redirect(url_for('login', next=next_url))
+
     return render_template('login.html')
 
 @app.route('/logout')
@@ -161,7 +200,7 @@ def personal_info():
                            gender=gender, age=age, weight=weight, height=height,
                            activity_level=activity_level)
 
-@app.route('/log/search')
+@app.route('/foods/search')
 @login_required
 def food_search():
     query = request.args.get('q', '')
@@ -192,7 +231,7 @@ def extract_nutrients(food_detail):
                 break
     return values
 
-@app.route('/log/add/<int:fdc_id>', methods=['POST'])
+@app.route('/foods/<int:fdc_id>/log', methods=['POST'])
 @login_required
 def add_food(fdc_id):
     try:
@@ -246,27 +285,17 @@ def summary_context(parsed_date):
     items = meal_log.items if meal_log else []
     return {'totals': totals, 'date': parsed_date, 'items': items}
 
-@app.route('/log/summary')
-@app.route('/log/summary/<log_date>')
+@app.route('/log')
+@app.route('/log/<date:log_date>')
 @login_required
 def daily_summary(log_date=None):
-    try:
-        parsed_date = datetime.strptime(log_date, '%Y-%m-%d').date() if log_date else date_type.today()
-    except ValueError:
-        flash('Dates must look like YYYY-MM-DD.')
-        return redirect(url_for('daily_summary'))
-    return render_template('summary.html', **summary_context(parsed_date))
+    return render_template('summary.html', **summary_context(log_date or date_type.today()))
 
-@app.route('/log/summary/average')
-@app.route('/log/summary/average/<int:days>')
+@app.route('/log/averages')
 @login_required
-def rolling_average(days=None):
-    # The form sends ?days=N; the path form /average/N also works
-    if days is None:
-        try:
-            days = int(request.args.get('days', ''))
-        except ValueError:
-            days = 0
+def rolling_average():
+    # /log/averages?days=7 -- an optional filter belongs in the query string, not the path
+    days = request.args.get('days', type=int, default=0)
     if not 1 <= days <= MAX_AVERAGE_DAYS:
         flash(f'Days must be a whole number from 1 to {MAX_AVERAGE_DAYS}.')
         return redirect(url_for('daily_summary'))
@@ -287,7 +316,7 @@ def delete_meal_item(item_id, user_id):
     db.session.commit()
     return True
 
-@app.route('/log/remove/<int:item_id>', methods=['POST'])
+@app.route('/log/items/<int:item_id>/delete', methods=['POST'])
 @login_required
 def remove_food(item_id):
     if delete_meal_item(item_id, user_id=current_user.id):
@@ -295,6 +324,31 @@ def remove_food(item_id):
     else:
         flash('Could not remove that item')
     return redirect(url_for('daily_summary'))
+
+# --- Legacy URLs ---
+# These were the original paths. They permanently redirect to the current ones so that
+# old bookmarks and links keep working. (Only GET pages need this; the old POST-only
+# URLs were reached through forms, which always use the current URLs.)
+
+@app.route('/log/search')
+def legacy_food_search():
+    return redirect(url_for('food_search', **request.args.to_dict()), code=301)
+
+@app.route('/log/summary')
+def legacy_daily_summary():
+    return redirect(url_for('daily_summary'), code=301)
+
+@app.route('/log/summary/<log_date>')
+def legacy_daily_summary_for_date(log_date):
+    return redirect(url_for('daily_summary', log_date=log_date), code=301)
+
+@app.route('/log/summary/average')
+def legacy_rolling_average():
+    return redirect(url_for('rolling_average', **request.args.to_dict()), code=301)
+
+@app.route('/log/summary/average/<int:days>')
+def legacy_rolling_average_for_days(days):
+    return redirect(url_for('rolling_average', days=days), code=301)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5050)
