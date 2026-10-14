@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import date as date_type
+from sqlalchemy import func, inspect, text
 
 db = SQLAlchemy()
 
@@ -19,8 +20,11 @@ class User(UserMixin, db.Model):
         return check_password_hash(self.password_hash, password)
 
 class MealLog(db.Model):
-    """Each MealLog instance has an associated id, user_id (from User), 
-    date, and items (from MealItem, this includes food details)"""
+    """Each MealLog instance has an associated id, user_id (from User),
+    date, and items (from MealItem, this includes food details).
+    A user has at most one MealLog per date (enforced by the database)."""
+    __table_args__ = (db.UniqueConstraint('user_id', 'date', name='uq_meal_log_user_date'),)
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     date = db.Column(db.Date, default=date_type.today, nullable=False)
@@ -38,3 +42,40 @@ class MealItem(db.Model):
     protein_g = db.Column(db.Float)
     carbs_g = db.Column(db.Float)
     fat_g = db.Column(db.Float)
+
+def ensure_meal_log_uniqueness():
+    """Make sure the meal_log table enforces one log per (user, date).
+
+    db.create_all() only builds tables that don't exist yet, so a database created before
+    the constraint was added would never get it. This upgrades such a database: any
+    duplicate logs are merged into the oldest one (their items move over, nothing is lost),
+    then a unique index is added. It does nothing if the rule is already in place, so it is
+    safe to run on every startup. Needs an application context.
+    """
+    columns = sorted(['user_id', 'date'])
+    inspector = inspect(db.engine)
+    if not inspector.has_table('meal_log'):
+        return  # create_all() will build it, constraint included
+
+    already_enforced = (
+        any(sorted(c['column_names']) == columns for c in inspector.get_unique_constraints('meal_log'))
+        or any(i.get('unique') and sorted(i['column_names']) == columns for i in inspector.get_indexes('meal_log'))
+    )
+    if already_enforced:
+        return
+
+    duplicated = (db.session.query(MealLog.user_id, MealLog.date)
+                  .group_by(MealLog.user_id, MealLog.date)
+                  .having(func.count(MealLog.id) > 1).all())
+    for user_id, day in duplicated:
+        ids = [row[0] for row in db.session.query(MealLog.id)
+               .filter_by(user_id=user_id, date=day).order_by(MealLog.id)]
+        keep, extras = ids[0], ids[1:]
+        MealItem.query.filter(MealItem.meal_log_id.in_(extras)).update(
+            {'meal_log_id': keep}, synchronize_session=False)
+        MealLog.query.filter(MealLog.id.in_(extras)).delete(synchronize_session=False)
+    db.session.commit()
+
+    db.session.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS uq_meal_log_user_date '
+                            'ON meal_log (user_id, date)'))
+    db.session.commit()

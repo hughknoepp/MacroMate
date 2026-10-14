@@ -1,8 +1,10 @@
 from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from config import Config
-from models import db, User, MealLog, MealItem
+from models import db, User, MealLog, MealItem, ensure_meal_log_uniqueness
+from sqlalchemy.exc import IntegrityError
 from usda import search_food, get_food_details
+from pipeline import RequestPipeline
 from datetime import datetime, date as date_type
 from nutrition import (get_daily_totals, get_rolling_average, calculate_bmi, calculate_bmr,
                        calculate_tdee, bmi_category, calorie_suggestions)
@@ -56,6 +58,7 @@ def load_user(user_id):
 
 with app.app_context():
     db.create_all()
+    ensure_meal_log_uniqueness()
 
 @app.route('/')
 def home():
@@ -231,6 +234,48 @@ def extract_nutrients(food_detail):
                 break
     return values
 
+def get_or_create_meal_log(user_id, day):
+    """The user's MealLog for `day`, created if it doesn't exist yet.
+
+    The database allows only one log per (user, date). If two requests both find none and
+    both try to create it, the second insert is refused; we then discard that attempt and
+    use the log the first request created. Call this before adding anything else to the
+    session, since the rollback would discard it too.
+    """
+    meal_log = MealLog.query.filter_by(user_id=user_id, date=day).first()
+    if meal_log is not None:
+        return meal_log
+    try:
+        meal_log = MealLog(user_id=user_id, date=day)
+        db.session.add(meal_log)
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        meal_log = MealLog.query.filter_by(user_id=user_id, date=day).one()
+    return meal_log
+
+class NoNutritionData(Exception):
+    """The USDA record has none of the nutrients we track."""
+
+def require_nutrients(food_detail):
+    values = extract_nutrients(food_detail)
+    if all(v is None for v in values.values()):
+        raise NoNutritionData()
+    return values
+
+# Looking up a food takes two dependent steps: the nutrients can't be read until the
+# record has been fetched, and the record can't be fetched without the fdcId. The
+# pipeline runs them in order, retries brief network/server hiccups on the fetch, and
+# stops at the first failure. Build once, reuse for every request.
+FOOD_LOOKUP = (RequestPipeline()
+               .step('details', lambda r: get_food_details(r['fdc_id']), retries=2)
+               .step('nutrients', lambda r: require_nutrients(r['details'])))
+
+FOOD_LOOKUP_ERRORS = {
+    'details': 'Could not fetch food details. Please try again later.',
+    'nutrients': 'The USDA has no nutrition data for that food, so it was not logged.',
+}
+
 @app.route('/foods/<int:fdc_id>/log', methods=['POST'])
 @login_required
 def add_food(fdc_id):
@@ -244,22 +289,17 @@ def add_food(fdc_id):
         flash('Quantity must be greater than zero')
         return redirect(url_for('food_search'))
     
-    try:
-        food = get_food_details(fdc_id)
-    except requests.exceptions.RequestException:
-        flash('Could not fetch food details. Please try again later.')
+    lookup = FOOD_LOOKUP.run(fdc_id=fdc_id)
+    if not lookup.ok:
+        app.logger.warning('Food lookup for fdcId %s failed at step %r: %r',
+                           fdc_id, lookup.failed_step, lookup.error)
+        flash(FOOD_LOOKUP_ERRORS[lookup.failed_step])
         return redirect(url_for('food_search'))
-    per_100g = extract_nutrients(food)
+    food, per_100g = lookup['details'], lookup['nutrients']
     scale = quantity_g / 100
 
-    meal_log = MealLog.query.filter_by(
-        user_id=current_user.id, date=date_type.today()
-    ).first()
-    if meal_log is None:
-        meal_log = MealLog(user_id=current_user.id, date=date_type.today())
-        db.session.add(meal_log)
-        db.session.flush()
-    
+    meal_log = get_or_create_meal_log(current_user.id, date_type.today())
+
     item = MealItem(
         meal_log_id = meal_log.id,
         food_name = food.get('description', 'Unknown food'),
