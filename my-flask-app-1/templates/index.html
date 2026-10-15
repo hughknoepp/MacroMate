@@ -2,7 +2,14 @@
 {% block title %}Home{% endblock %}
 {% block content %}
 <div id="welcome">
-    <img src="https://framerusercontent.com/images/XYMnvXnV3tLUtdJtpHXPpxHGs.jpg?width=4827&height=3862" alt="Meal Prep Example">
+    {# The original is 4827x3862 (18.6 megapixels) but is shown at most 560px wide. The host
+       resizes with scale-down-to (it ignores width/height); srcset lets each screen fetch
+       only what it needs: 1024px for normal screens, 2048px for high-density ones. #}
+    <img src="https://framerusercontent.com/images/XYMnvXnV3tLUtdJtpHXPpxHGs.jpg?scale-down-to=1024"
+         srcset="https://framerusercontent.com/images/XYMnvXnV3tLUtdJtpHXPpxHGs.jpg?scale-down-to=1024 1024w,
+                 https://framerusercontent.com/images/XYMnvXnV3tLUtdJtpHXPpxHGs.jpg?scale-down-to=2048 2048w"
+         sizes="(max-width: 600px) calc(100vw - 40px), 560px"
+         alt="Meal Prep Example">
     <h1>Welcome to Meal Prepper!</h1>
     <p>An easier way to track your daily meals, calories, and nutrient intake</p>
 </div>

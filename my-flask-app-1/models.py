@@ -34,7 +34,8 @@ class MealItem(db.Model):
     """Each MealItem instance has an associated id, meal_log_id (from MealLog), 
     food name, FDC ID, # grams, calories, protein(g), fat(g), carbs(g)"""
     id = db.Column(db.Integer, primary_key=True)
-    meal_log_id = db.Column(db.Integer, db.ForeignKey('meal_log.id'), nullable=False)
+    # Indexed: every lookup of a log's items goes through this column
+    meal_log_id = db.Column(db.Integer, db.ForeignKey('meal_log.id'), nullable=False, index=True)
     food_name = db.Column(db.String(200), nullable=False)
     fdc_id = db.Column(db.Integer, nullable=False)
     quantity_g = db.Column(db.Float, nullable=False)
@@ -78,4 +79,15 @@ def ensure_meal_log_uniqueness():
 
     db.session.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS uq_meal_log_user_date '
                             'ON meal_log (user_id, date)'))
+    db.session.commit()
+
+
+def ensure_meal_item_index():
+    """Add the index on meal_item.meal_log_id to databases created before it existed.
+
+    New databases get it from the model (index=True); create_all() never alters existing
+    tables. Harmless to run on every startup. Needs an application context.
+    """
+    db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_meal_item_meal_log_id '
+                            'ON meal_item (meal_log_id)'))
     db.session.commit()

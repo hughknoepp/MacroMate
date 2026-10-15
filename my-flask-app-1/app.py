@@ -1,13 +1,13 @@
 from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from config import Config
-from models import db, User, MealLog, MealItem, ensure_meal_log_uniqueness
+from models import db, User, MealLog, MealItem, ensure_meal_log_uniqueness, ensure_meal_item_index
 from sqlalchemy.exc import IntegrityError
 from usda import search_food, get_food_details
 from pipeline import RequestPipeline
 from datetime import datetime, date as date_type
-from nutrition import (get_daily_totals, get_rolling_average, calculate_bmi, calculate_bmr,
-                       calculate_tdee, bmi_category, calorie_suggestions)
+from nutrition import (get_daily_items, totals_from_items, get_rolling_average, calculate_bmi,
+                       calculate_bmr, calculate_tdee, bmi_category, calorie_suggestions)
 import requests
 from werkzeug.routing import BaseConverter, ValidationError
 
@@ -54,11 +54,12 @@ login_manager.init_app(app)
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 with app.app_context():
     db.create_all()
     ensure_meal_log_uniqueness()
+    ensure_meal_item_index()
 
 @app.route('/')
 def home():
@@ -222,16 +223,25 @@ NUTRIENT_MAP = {
     'fat_g': ('Total lipid (fat)', 'G'),
 }
 
+# (nutrient name, unit) -> our field name, so one pass over the record can find all four
+NUTRIENT_FIELDS = {name_unit: field for field, name_unit in NUTRIENT_MAP.items()}
+
 def extract_nutrients(food_detail):
-    """Pull the four tracked nutrients (per 100g) out of a USDA food record."""
-    values = {}
-    for field, (name, unit) in NUTRIENT_MAP.items():
-        values[field] = None
-        for n in food_detail.get('foodNutrients', []):
-            nutrient = n.get('nutrient', {})
-            if nutrient.get('name') == name and nutrient.get('unitName', '').upper() == unit:
-                values[field] = n.get('amount')
-                break
+    """Pull the four tracked nutrients (per 100g) out of a USDA food record.
+
+    One pass over the record's nutrient list (these can run to a hundred entries or more).
+    If a nutrient is listed more than once, the first entry wins.
+    """
+    values = dict.fromkeys(NUTRIENT_MAP)
+    found = set()
+    for n in food_detail.get('foodNutrients', []):
+        nutrient = n.get('nutrient', {})
+        field = NUTRIENT_FIELDS.get((nutrient.get('name'), nutrient.get('unitName', '').upper()))
+        if field is not None and field not in found:
+            values[field] = n.get('amount')
+            found.add(field)
+            if len(found) == len(NUTRIENT_MAP):
+                break  # nothing left to find
     return values
 
 def get_or_create_meal_log(user_id, day):
@@ -320,10 +330,8 @@ MAX_AVERAGE_DAYS = 365
 
 def summary_context(parsed_date):
     """Everything summary.html needs to render one day's totals and items."""
-    totals = get_daily_totals(current_user.id, parsed_date)
-    meal_log = MealLog.query.filter_by(user_id=current_user.id, date=parsed_date).first()
-    items = meal_log.items if meal_log else []
-    return {'totals': totals, 'date': parsed_date, 'items': items}
+    items = get_daily_items(current_user.id, parsed_date)  # one query; totals come from these
+    return {'totals': totals_from_items(items), 'date': parsed_date, 'items': items}
 
 @app.route('/log')
 @app.route('/log/<date:log_date>')
@@ -347,10 +355,11 @@ def rolling_average():
                            **summary_context(date_type.today()))
 
 def delete_meal_item(item_id, user_id):
-    item = MealItem.query.get(item_id)
+    # One query that only matches the item if it belongs to this user's logs
+    item = (MealItem.query.join(MealLog)
+            .filter(MealItem.id == item_id, MealLog.user_id == user_id)
+            .first())
     if item is None:
-        return False
-    if item.meal_log.user_id != user_id:
         return False
     db.session.delete(item)
     db.session.commit()

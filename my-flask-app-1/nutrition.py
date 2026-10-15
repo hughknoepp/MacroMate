@@ -1,44 +1,57 @@
 from datetime import timedelta, date as date_type
-from models import MealLog
+from sqlalchemy import func
+from models import db, MealLog, MealItem
 
-def get_daily_totals(user_id, log_date = None):
-    """Sum calories/protein/fat/carbs across all foods logged by a user on a given date"""
-    log_date = log_date or date_type.today()
-    meal_log = MealLog.query.filter_by(user_id=user_id, date=log_date).first()
+def get_daily_items(user_id, log_date):
+    """All food items a user logged on a date, oldest first, in a single query."""
+    return (MealItem.query.join(MealLog)
+            .filter(MealLog.user_id == user_id, MealLog.date == log_date)
+            .order_by(MealItem.id)
+            .all())
+
+def totals_from_items(items):
+    """Sum calories/protein/fat/carbs across a list of logged food items."""
     totals = {'calories': 0, 'protein_g': 0, 'carbs_g': 0, 'fat_g': 0}
-
-    if meal_log is None:
-        return totals
-    
-    for item in meal_log.items:
+    for item in items:
         totals['calories'] += item.calories or 0
         totals['protein_g'] += item.protein_g or 0
         totals['carbs_g'] += item.carbs_g or 0
         totals['fat_g'] += item.fat_g or 0
-    
     return totals
 
+def get_daily_totals(user_id, log_date = None):
+    """Sum calories/protein/fat/carbs across all foods logged by a user on a given date"""
+    log_date = log_date or date_type.today()
+    return totals_from_items(get_daily_items(user_id, log_date))
+
 def get_rolling_average(user_id, days=7):
-    """Calculate the rolling average of calories/protein/fat/carbs over the last `days` days."""
+    """Calculate the rolling average of calories/protein/fat/carbs over the last `days` days.
+
+    Days with nothing logged count as zero, so this is the total over the window divided by
+    `days`. The database adds everything up in one query; there is no need to fetch each day.
+    """
     assert days > 0 and isinstance(days, int) # Ensure days is a positive integer
-    
+
     today = date_type.today()
     start_date = today - timedelta(days=days - 1)
-    daily_totals = []
-    for single_date in (start_date + timedelta(n) for n in range(days)):
-        daily_totals.append(get_daily_totals(user_id, single_date))
-    
-    if not daily_totals:
-        return {'calories': 0, 'protein_g': 0, 'carbs_g': 0, 'fat_g': 0}
-    
-    averages = {
-        'calories': sum(day['calories'] for day in daily_totals) / days,
-        'protein_g': sum(day['protein_g'] for day in daily_totals) / days,
-        'carbs_g': sum(day['carbs_g'] for day in daily_totals) / days,
-        'fat_g': sum(day['fat_g'] for day in daily_totals) / days,
+    calories, protein_g, carbs_g, fat_g = (
+        db.session.query(
+            func.coalesce(func.sum(MealItem.calories), 0),
+            func.coalesce(func.sum(MealItem.protein_g), 0),
+            func.coalesce(func.sum(MealItem.carbs_g), 0),
+            func.coalesce(func.sum(MealItem.fat_g), 0),
+        )
+        .select_from(MealItem)
+        .join(MealLog, MealItem.meal_log_id == MealLog.id)
+        .filter(MealLog.user_id == user_id, MealLog.date >= start_date, MealLog.date <= today)
+        .one()
+    )
+    return {
+        'calories': calories / days,
+        'protein_g': protein_g / days,
+        'carbs_g': carbs_g / days,
+        'fat_g': fat_g / days,
     }
-
-    return averages
 
 def calculate_bmi(weight_kg, height_m):
     """Calculates BMI given weight in kilograms and height in meters. Requires that `0 < weight_kg < 635` and `0 < height_m < 2.72`."""
