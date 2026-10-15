@@ -2,6 +2,7 @@ from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from config import Config
 from models import db, User, MealLog, MealItem, ensure_meal_log_uniqueness, ensure_meal_item_index
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from usda import search_food, get_food_details
 from pipeline import RequestPipeline
@@ -71,21 +72,39 @@ with app.app_context():
 def home():
     return render_template('index.html')
 
+def registration_conflict(username, email):
+    """A message explaining why this username/email can't be registered, or None if it's free.
+
+    Emails are compared ignoring upper/lower case, so Sam@x.com and sam@x.com count as the same.
+    """
+    if User.query.filter_by(username=username).first():
+        return 'Username already exists'
+    if User.query.filter(func.lower(User.email) == email.lower()).first():
+        return 'That email is already registered. Try logging in instead.'
+    return None
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = request.form['username']
-        email = request.form['email']
+        email = request.form['email'].strip()
         password = request.form['password']
 
-        if User.query.filter_by(username=username).first():
-            flash('Username already exists')
+        conflict = registration_conflict(username, email)
+        if conflict:
+            flash(conflict)
             return redirect(url_for('register'))
         
         user = User(username=username, email=email)
         user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
+        try:
+            db.session.add(user)
+            db.session.commit()
+        except IntegrityError:
+            # Someone registered the same username/email between our check and the save
+            db.session.rollback()
+            flash(registration_conflict(username, email) or 'Could not create your account. Please try again.')
+            return redirect(url_for('register'))
 
         flash('Registration successful! Please log in')
         return redirect(url_for('login'))
