@@ -32,7 +32,7 @@ Built with Flask, SQLite and the [USDA FoodData Central](https://fdc.nal.usda.go
 ## Setup
 
 ```bash
-git clone https://github.com/hughknoepp/Meal-Planner.git MacroMate
+git clone https://github.com/hughknoepp/MacroMate.git
 cd MacroMate/my-flask-app-1
 
 python3 -m venv .venv
