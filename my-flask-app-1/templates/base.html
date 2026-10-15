@@ -2,18 +2,22 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{% block title %}My App{% endblock %}</title>
+    <title>{% if self.title()|trim %}{% block title %}{% endblock %} | {% endif %}{{ app_name }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <nav>
-        {% if current_user.is_authenticated %}
-            <span>Hi, {{ current_user.username }}</span>
-            <a href="{{ url_for('logout') }}">Log out</a>
-        {% else %}
-            <a href="{{ url_for('login') }}">Log in</a>
-            <a href="{{ url_for('register') }}">Register</a>
-        {% endif %}
+        {# The app name links home: your dashboard once logged in, the welcome page otherwise #}
+        <a href="{{ url_for('dashboard' if current_user.is_authenticated else 'home') }}" class="nav-brand">{{ app_name }}</a>
+        <div class="nav-links">
+            {% if current_user.is_authenticated %}
+                <span title="{{ current_user.username }}">Hi, {{ current_user.username }}</span>
+                <a href="{{ url_for('logout') }}">Log out</a>
+            {% else %}
+                <a href="{{ url_for('login') }}">Log in</a>
+                <a href="{{ url_for('register') }}">Register</a>
+            {% endif %}
+        </div>
     </nav>
 
     <main>

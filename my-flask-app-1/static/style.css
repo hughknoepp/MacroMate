@@ -24,16 +24,45 @@ main, .container {
 
 nav {
     display: flex;
-    justify-content: flex-end;
+    flex-wrap: wrap;            /* on very narrow screens the links drop under the name */
+    justify-content: space-between;
     align-items: center;
-    gap: 16px;
+    gap: 8px 16px;
     padding: 16px 24px;
     background-color: #333;
     color: #fff;
 }
 
-/* Divider between neighbouring nav items */
-nav > * + * {
+.nav-brand {
+    font-size: 1.2rem;
+    font-weight: bold;
+    letter-spacing: 0.02em;
+}
+
+/* Stays on the right, even when it wraps onto its own line */
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-left: auto;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* A very long username is cut short with an ellipsis instead of pushing Log out off-screen */
+.nav-links > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nav-links > a {
+    white-space: nowrap;
+}
+
+/* Divider between neighbouring links */
+.nav-links > * + * {
     border-left: 1px solid rgba(255, 255, 255, 0.4);
     padding-left: 16px;
 }

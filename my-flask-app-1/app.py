@@ -26,6 +26,12 @@ class DateConverter(BaseConverter):
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+@app.context_processor
+def inject_app_name():
+    """Make {{ app_name }} available in every template."""
+    return {'app_name': app.config['APP_NAME']}
+
 app.url_map.converters['date'] = DateConverter
 db.init_app(app)
 
