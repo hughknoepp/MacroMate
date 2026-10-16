@@ -190,6 +190,42 @@ nav a:hover {
     border-bottom: none;
 }
 
+/* Sugar, minerals and vitamins: smaller print beneath the main totals */
+.micro-nutrients {
+    margin: 12px 0 20px;
+    font-size: 0.85rem;
+    color: #444;
+}
+
+.micro-nutrients h3 {
+    margin: 14px 0 4px;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.micro-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.micro-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.micro-list li:last-child {
+    border-bottom: none;
+}
+
+.micro-note {
+    margin: 8px 0 0;
+    font-size: 0.78rem;
+    color: #666;
+}
+
 /* --- Headings --- */
 h1 {
     margin: 0 0 20px;

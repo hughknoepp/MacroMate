@@ -19,6 +19,26 @@
         <li><span>Carbs</span><span>{{ '%.1f'|format(totals.carbs_g) }} g</span></li>
         <li><span>Fat</span><span>{{ '%.1f'|format(totals.fat_g) }} g</span></li>
     </ul>
+    {% if items %}
+    {# Sugar, minerals and vitamins, in smaller print. The USDA doesn't report every nutrient for
+       every food, so a nutrient nobody reported shows a dash, and one only some foods reported
+       is starred because its total may be low. #}
+    {% set gaps = namespace(any=false) %}
+    <div class="micro-nutrients">
+        {% for group, rows in micronutrient_groups %}
+        <h3>{{ group }}</h3>
+        <ul class="micro-list">
+            {% for row in rows %}
+            {% if row.total is none or not row.complete %}{% set gaps.any = true %}{% endif %}
+            <li><span>{{ row.label }}</span><span>{% if row.total is none %}&mdash;{% else %}{{ row.total|amount }} {{ row.unit }}{% if not row.complete %}*{% endif %}{% endif %}</span></li>
+            {% endfor %}
+        </ul>
+        {% endfor %}
+        {% if gaps.any %}
+        <p class="micro-note">&mdash; no logged food reports this nutrient. * Some foods don't report it (or were logged before nutrients were tracked), so the total may be low.</p>
+        {% endif %}
+    </div>
+    {% endif %}
     <h1>Get Rolling Averages</h1>
     <form method="GET" action="{{ url_for('rolling_average') }}">
         <input type="number" name="days" placeholder="How many days?" min="1" max="365" step="1" required value="{{ num_days or '' }}">

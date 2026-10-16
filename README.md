@@ -10,6 +10,7 @@ Built with Flask, SQLite and the [USDA FoodData Central](https://fdc.nal.usda.go
 - Search thousands of foods through the USDA FoodData Central API.
 - Log any food by weight in grams. Calories, protein, carbs and fat are scaled from the USDA's per-100 g values.
 - See any day's logged items and macro totals. Today is at `/log`, and any past day is at `/log/YYYY-MM-DD`.
+- Under the main totals, in smaller print, see sugars, calcium, sodium, iron and the essential vitamins (A, C, D, E, K and the B vitamins: thiamin, riboflavin, niacin, pantothenic acid, B6, folate and B12). The USDA doesn't report every nutrient for every food (packaged foods often list only sugars, minerals and vitamins A, C and D), so a nutrient no logged food reports shows a dash, and one only some foods report is starred because its total may be low.
 - Get rolling averages (1 to 365 days) of calories, protein, carbs and fat. Days with nothing logged count as zero.
 
 **Personal info calculator**
@@ -47,7 +48,7 @@ Open **http://127.0.0.1:5050**. The database is created automatically on first r
 
 > The app uses port **5050** because on macOS port 5000 is taken by AirPlay Receiver. Use `127.0.0.1` rather than `localhost`.
 
-Run the tests (15 unit tests for the request pipeline) from `my-flask-app-1/`:
+Run the tests (35 unit tests covering the request pipeline and nutrient extraction) from `my-flask-app-1/`:
 
 ```bash
 python -m unittest discover -v
@@ -82,7 +83,7 @@ Earlier URLs (`/log/search`, `/log/summary/...`) still work and redirect permane
 
 ## How it works
 
-- **Data model** (`models.py`): `User` has `MealLog`s (one per user per date, enforced by a database constraint), and each `MealLog` has `MealItem`s (food, grams, calories, protein, carbs, fat). Existing databases are upgraded automatically at startup.
+- **Data model** (`models.py`): `User` has `MealLog`s (one per user per date, enforced by a database constraint), and each `MealLog` has `MealItem`s (food, grams, calories, protein, carbs, fat, plus the sugars, minerals and vitamins the USDA reported for it). Existing databases are upgraded automatically at startup.
 - **USDA lookups** (`usda.py`, `pipeline.py`): responses are cached on disk in `usda_cache.sqlite` (search results for 6 hours, a food's nutrient record for 30 days, and your API key is never stored in the cache). Logging a food runs two dependent steps in order, fetching the record and then reading its nutrients. Brief network or server errors are retried, and any failure shows a friendly message instead of an error page.
 - **Calculations** (`nutrition.py`): daily totals, rolling averages (one database query each), BMI, BMR, TDEE and the calorie suggestions.
 
@@ -91,6 +92,7 @@ my-flask-app-1/
 ├── app.py            routes and request handling
 ├── models.py         database models and startup upgrades
 ├── nutrition.py      nutrition and body-metric calculations
+├── micronutrients.py sugars, minerals and vitamins: what is tracked and how it is read
 ├── usda.py           cached USDA API client
 ├── pipeline.py       runs dependent requests in order, with retries
 ├── config.py         settings (reads .env)
@@ -106,4 +108,5 @@ my-flask-app-1/
 - **No delete button yet.** The remove-item route exists, but no page links to it.
 - **Personal info isn't linked from the dashboard.** Open `/personal-info` directly.
 - **No CSRF protection** on forms, and logout is a plain link (GET).
+- **Averages are macros only.** Rolling averages cover calories, protein, carbs and fat, not the sugars, minerals and vitamins.
 - **Units.** Food nutrition comes from the USDA per 100 g, so foods are logged in grams only.

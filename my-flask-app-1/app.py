@@ -1,7 +1,10 @@
 from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from config import Config
-from models import db, User, MealLog, MealItem, ensure_meal_log_uniqueness, ensure_meal_item_index
+from models import (db, User, MealLog, MealItem, ensure_meal_log_uniqueness, ensure_meal_item_index,
+                    ensure_micronutrients_column)
+from micronutrients import (extract_micronutrients, scale_micronutrients, micronutrient_totals,
+                            group_rows, format_amount)
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from usda import search_food, get_food_details
@@ -67,6 +70,7 @@ with app.app_context():
     db.create_all()
     ensure_meal_log_uniqueness()
     ensure_meal_item_index()
+    ensure_micronutrients_column()
 
 @app.route('/')
 def home():
@@ -304,7 +308,8 @@ def require_nutrients(food_detail):
 # stops at the first failure. Build once, reuse for every request.
 FOOD_LOOKUP = (RequestPipeline()
                .step('details', lambda r: get_food_details(r['fdc_id']), retries=2)
-               .step('nutrients', lambda r: require_nutrients(r['details'])))
+               .step('nutrients', lambda r: require_nutrients(r['details']))
+               .step('micronutrients', lambda r: extract_micronutrients(r['details'])))
 
 FOOD_LOOKUP_ERRORS = {
     'details': 'Could not fetch food details. Please try again later.',
@@ -328,9 +333,9 @@ def add_food(fdc_id):
     if not lookup.ok:
         app.logger.warning('Food lookup for fdcId %s failed at step %r: %r',
                            fdc_id, lookup.failed_step, lookup.error)
-        flash(FOOD_LOOKUP_ERRORS[lookup.failed_step])
+        flash(FOOD_LOOKUP_ERRORS.get(lookup.failed_step, FOOD_LOOKUP_ERRORS['details']))
         return redirect(url_for('food_search'))
-    food, per_100g = lookup['details'], lookup['nutrients']
+    food, per_100g, micro_per_100g = lookup['details'], lookup['nutrients'], lookup['micronutrients']
     scale = quantity_g / 100
 
     meal_log = get_or_create_meal_log(current_user.id, date_type.today())
@@ -344,6 +349,7 @@ def add_food(fdc_id):
         protein_g = (per_100g['protein_g'] or 0) * scale,
         carbs_g = (per_100g['carbs_g'] or 0) * scale,
         fat_g = (per_100g['fat_g'] or 0) * scale,
+        micronutrients = scale_micronutrients(micro_per_100g, scale),
     )
     db.session.add(item)
     db.session.commit()
@@ -356,7 +362,10 @@ MAX_AVERAGE_DAYS = 365
 def summary_context(parsed_date):
     """Everything summary.html needs to render one day's totals and items."""
     items = get_daily_items(current_user.id, parsed_date)  # one query; totals come from these
-    return {'totals': totals_from_items(items), 'date': parsed_date, 'items': items}
+    return {'totals': totals_from_items(items), 'date': parsed_date, 'items': items,
+            'micronutrient_groups': group_rows(micronutrient_totals(items))}
+
+app.add_template_filter(format_amount, 'amount')
 
 @app.route('/log')
 @app.route('/log/<date:log_date>')

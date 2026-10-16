@@ -43,6 +43,9 @@ class MealItem(db.Model):
     protein_g = db.Column(db.Float)
     carbs_g = db.Column(db.Float)
     fat_g = db.Column(db.Float)
+    # Sugars, minerals and vitamins for the portion eaten, e.g. {'calcium_mg': 12.5}. Only the
+    # nutrients the USDA reported are present. NULL for items logged before this was tracked.
+    micronutrients = db.Column(db.JSON)
 
 def ensure_meal_log_uniqueness():
     """Make sure the meal_log table enforces one log per (user, date).
@@ -91,3 +94,15 @@ def ensure_meal_item_index():
     db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_meal_item_meal_log_id '
                             'ON meal_item (meal_log_id)'))
     db.session.commit()
+
+
+def ensure_micronutrients_column():
+    """Add meal_item.micronutrients to databases created before it existed.
+
+    New databases get it from the model; create_all() never alters existing tables. Items
+    already logged keep NULL there (they have no micronutrient data). Safe to run on every
+    startup. Needs an application context.
+    """
+    if 'micronutrients' not in {c['name'] for c in inspect(db.engine).get_columns('meal_item')}:
+        db.session.execute(text('ALTER TABLE meal_item ADD COLUMN micronutrients JSON'))
+        db.session.commit()
