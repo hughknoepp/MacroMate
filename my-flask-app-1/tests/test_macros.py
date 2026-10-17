@@ -2,7 +2,7 @@
 import itertools
 import unittest
 
-from macros import CARB_MIN_GRAMS, carb_recommendations
+from macros import CARB_MIN_GRAMS, carb_recommendations, fat_recommendations
 
 # A 30-year-old man, 80 kg, sedentary: calorie ranges (midpoints 1,695 / 2,135 / 2,515) and protein ranges
 RANGES = {'lose': {'low': 1500, 'high': 1890}, 'maintain': {'low': 2030, 'high': 2240}, 'gain': {'low': 2390, 'high': 2640}}
@@ -13,6 +13,10 @@ PROTEIN = [{'key': 'lose', 'grams_low': 95, 'grams_high': 130},       # midpoint
 
 def carbs(age=30, ranges=RANGES, protein=PROTEIN, notes=()):
     return carb_recommendations(age, ranges, protein, notes)
+
+
+def fats(age=30, ranges=RANGES, notes=()):
+    return fat_recommendations(age, ranges, notes)
 
 
 def goal(rec, key):
@@ -72,6 +76,33 @@ class CarbTests(unittest.TestCase):
             self.assertGreaterEqual(g['grams_low'], CARB_MIN_GRAMS)
             self.assertLessEqual(g['percent_high'], 66, (mid, protein_g))   # 65%, allowing for rounding to 5 g
             self.assertEqual((g['grams_low'] % 5, g['grams_high'] % 5), (0, 0))
+
+
+class FatTests(unittest.TestCase):
+    def test_20_to_35_percent_of_calories_matches_hand_calculation(self):
+        # maintain: 20% of 2,135 = 427 kcal = 47 g -> 45; 35% = 747 kcal = 83 g -> 85 (lose: 40-65, gain: 55-100)
+        self.assertEqual([(g['key'], g['grams_low'], g['grams_high']) for g in fats()['goals']],
+                         [('lose', 40, 65), ('maintain', 45, 85), ('gain', 55, 100)])
+
+    def test_the_share_shown_is_the_rule_not_a_rounded_result(self):
+        self.assertTrue(all((g['percent_low'], g['percent_high']) == (20, 35) for g in fats()['goals']))
+
+    def test_saturated_fat_limit_is_just_under_10_percent(self):
+        # 10% of 1,695 / 2,135 / 2,515 kcal = 18.8 / 23.7 / 27.9 g, rounded down so it stays under 10%
+        self.assertEqual([g['saturated_max_g'] for g in fats()['goals']], [18, 23, 27])
+        for g in fats()['goals']:
+            self.assertLess(g['saturated_max_g'] * 9 / (({'lose': 1695, 'maintain': 2135, 'gain': 2515})[g['key']]), 0.10)
+
+    def test_goals_without_calories_are_left_out(self):
+        self.assertEqual([g['key'] for g in fats(ranges={'lose': None, 'maintain': RANGES['maintain'], 'gain': None})['goals']], ['maintain'])
+
+    def test_under_18_gets_no_targets(self):
+        rec = fats(age=17, notes=['a note'])
+        self.assertEqual((rec['minor'], rec['goals'], rec['notes']), (True, [], ['a note']))
+
+    def test_more_calories_means_more_fat(self):
+        lows = [fats(ranges={'maintain': {'low': m - 100, 'high': m + 100}})['goals'][0]['grams_low'] for m in range(1400, 4000, 200)]
+        self.assertEqual(lows, sorted(lows))
 
 
 if __name__ == '__main__':

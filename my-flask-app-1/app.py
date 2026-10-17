@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from usda import search_food, get_food_details
 from pipeline import RequestPipeline
 from protein import protein_recommendations as build_protein_recommendations, KG_PER_LB
-from macros import carb_recommendations as build_carb_recommendations
+from macros import carb_recommendations as build_carb_recommendations, fat_recommendations as build_fat_recommendations
 from datetime import datetime, date as date_type
 from nutrition import (get_daily_items, totals_from_items, get_rolling_average, calculate_bmi,
                        calculate_bmr, calculate_tdee, bmi_category, calorie_suggestions)
@@ -323,6 +323,16 @@ def carbs_recommendations():
     recommendation = build_carb_recommendations(inputs['profile']['age'], inputs['calorie_ranges'],
                                                 protein_for(inputs)['goals'], inputs['suggestions']['notes'])
     return render_template('carbs.html', rec=recommendation, **inputs)
+
+@app.route('/recommendations/fats')
+@login_required
+def fats_recommendations():
+    inputs = recommendation_inputs()
+    if inputs is None:
+        return need_personal_info()
+    recommendation = build_fat_recommendations(inputs['profile']['age'], inputs['calorie_ranges'],
+                                               inputs['suggestions']['notes'])
+    return render_template('fats.html', rec=recommendation, **inputs)
 
 @app.route('/foods/search')
 @login_required

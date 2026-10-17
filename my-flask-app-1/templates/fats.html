@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Fat Recommendations{% endblock %}
+{% block content %}
+<div id="fat-recommendations">
+    <h1>Fat Recommendations</h1>
+    {% with current = 'fats' %}{% include '_recommendation_nav.html' %}{% endwith %}
+    <p class="profile-summary">Based on your details: {{ profile.age }}-year-old {{ profile.gender }}, {{ weight_text }}, {{ activity_label }}.</p>
+
+    {% if rec.minor %}
+    <div class="result-block">
+        <p class="suggestion-note">These recommendations are designed for adults. If you are under 18, fat needs depend on your age and growth, so talk to a doctor or dietitian.</p>
+    </div>
+    {% else %}
+    <div id="fat-targets" class="result-block">
+        <h2>Daily fat targets</h2>
+        <div class="suggestion-cards">
+            {% for goal in rec.goals %}
+            <div class="suggestion-card" id="fats-{{ goal.key }}">
+                <h3>{{ goal.title }}</h3>
+                <p class="suggestion-range">{{ goal.grams_low }}&ndash;{{ goal.grams_high }} g</p>
+                <p>fat/day</p>
+                <p class="suggestion-rate">{{ goal.percent_low }}&ndash;{{ goal.percent_high }}% of your calories</p>
+                <p class="suggestion-rate">Saturated fat: under {{ goal.saturated_max_g }} g</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% for note in rec.notes %}
+        <p class="suggestion-note">{{ note }}</p>
+        {% endfor %}
+        <p class="suggestion-note">These are estimates, not medical advice. Check with a doctor or dietitian before making big changes to how you eat, especially if you have high cholesterol, heart disease or another medical condition.</p>
+    </div>
+
+    <div id="fat-tips" class="result-block">
+        <h2>Making it work</h2>
+        <p>Choose mostly unsaturated fats: olive and canola oil, nuts, seeds and avocado. Eat fatty fish, like salmon or sardines, about twice a week.</p>
+        <p>Keep saturated fat (butter, fatty meat, cheese, coconut and palm oil) low, and avoid trans fats as much as you can.</p>
+        <p>Fat has 9 calories per gram, more than twice the 4 in protein or carbs, so small portions add up quickly.</p>
+        <p><a href="{{ url_for('food_search') }}" class="btn-link">Search foods to see their fat</a></p>
+    </div>
+    {% endif %}
+
+    <div id="calculation-info">
+        <h2>How these numbers are worked out</h2>
+        {% if not rec.minor %}
+        <p>For each goal, the middle of its calorie suggestion is used.</p>
+        <ul>
+            <li><strong>Total fat:</strong> 20&ndash;35% of calories, the usual healthy range for adults. Going below 20% has no benefit and can make it harder to get essential fats and vitamins.</li>
+            <li><strong>Saturated fat:</strong> under 10% of calories.</li>
+            <li><strong>Fits with the others:</strong> your <a href="{{ url_for('carbs_recommendations') }}">carb targets</a> are what remains after your
+                <a href="{{ url_for('protein_recommendations') }}">protein</a> and this much fat.</li>
+        </ul>
+        <p>Amounts are rounded to the nearest 5 g, except the saturated fat limit, which is rounded down to stay under 10%.</p>
+        {% endif %}
+        <p><a href="{{ url_for('personal_info') }}">Update my personal information</a></p>
+    </div>
+</div>
+{% endblock %}

@@ -1,9 +1,10 @@
-"""Daily carbohydrate recommendations, built to fit together with the protein targets.
+"""Daily carbohydrate and fat recommendations, built to fit together with the protein targets.
 
-Each goal (lose, maintain, gain) has a calorie range from nutrition.calorie_suggestions. Protein,
-carbs and fat for that goal are worked out against the middle of that range:
+Each goal (lose, maintain, gain) has a calorie range from nutrition.calorie_suggestions. All of
+protein, carbs and fat for that goal are worked out against the middle of that range:
 
-* Fat takes 20-35% of calories (the US/Canadian acceptable range for adults).
+* Fat is 20-35% of calories (the US/Canadian acceptable range for adults), with saturated fat
+  under 10% of calories.
 * Carbs are what is left once protein and fat are accounted for, so the three fit together.
   Carbs are never planned above 65% of calories (top of the usual 45-65% range) or below 130 g
   a day (the official daily minimum for adults).
@@ -16,8 +17,10 @@ import math
 from protein import GOAL_ORDER, GOAL_TITLES, KCAL_PER_G_PROTEIN, _round_to_5
 
 KCAL_PER_G_CARB = 4
+KCAL_PER_G_FAT = 9
 
 FAT_SHARE = (0.20, 0.35)           # of calories
+SATURATED_FAT_MAX_SHARE = 0.10     # of calories
 CARB_MAX_SHARE = 0.65              # of calories
 CARB_MIN_GRAMS = 130               # per day
 FIBER_G_PER_1000_KCAL = 14
@@ -75,5 +78,28 @@ def carb_recommendations(age, calorie_ranges, protein_goals, calorie_notes=()):
             'fiber_g': _round_to_5(FIBER_G_PER_1000_KCAL * mid / 1000),
             'added_sugar_max_g': _round_down(ADDED_SUGAR_MAX_SHARE * mid / KCAL_PER_G_CARB, 5),
             'at_minimum': at_minimum,
+        })
+    return {'minor': False, 'goals': goals, 'notes': notes}
+
+
+def fat_recommendations(age, calorie_ranges, calorie_notes=()):
+    """Fat targets for each goal the calorie suggestions offer: 20-35% of calories, with the
+    most saturated fat that stays under 10%. Returns {'minor', 'goals': [...], 'notes': [...]}."""
+    notes = list(calorie_notes)
+    if age < 18:
+        return _minor_result(notes)
+
+    goals = []
+    for key in GOAL_ORDER:
+        calories = calorie_ranges.get(key)
+        if calories is None:
+            continue
+        mid = _midpoint(calories)
+        goals.append({
+            'key': key, 'title': GOAL_TITLES[key],
+            'grams_low': _round_to_5(FAT_SHARE[0] * mid / KCAL_PER_G_FAT),
+            'grams_high': _round_to_5(FAT_SHARE[1] * mid / KCAL_PER_G_FAT),
+            'percent_low': round(FAT_SHARE[0] * 100), 'percent_high': round(FAT_SHARE[1] * 100),
+            'saturated_max_g': _round_down(SATURATED_FAT_MAX_SHARE * mid / KCAL_PER_G_FAT, 1),
         })
     return {'minor': False, 'goals': goals, 'notes': notes}

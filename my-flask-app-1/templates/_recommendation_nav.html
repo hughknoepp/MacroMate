@@ -1,6 +1,6 @@
-{# Switch between the nutrient pages. Pass `current` as 'protein' or 'carbs'. #}
+{# Switch between the nutrient pages. Pass `current` as 'protein', 'carbs' or 'fats'. #}
 <nav class="rec-nav" aria-label="Nutrient recommendations">
-    {% for key, label, endpoint in [('protein', 'Protein', 'protein_recommendations'), ('carbs', 'Carbs', 'carbs_recommendations')] %}
+    {% for key, label, endpoint in [('protein', 'Protein', 'protein_recommendations'), ('carbs', 'Carbs', 'carbs_recommendations'), ('fats', 'Fats', 'fats_recommendations')] %}
     <a href="{{ url_for(endpoint) }}"{% if key == current %} class="active" aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
 </nav>

@@ -45,7 +45,8 @@
         {% if not rec.minor %}
         <p>Protein, carbs and fat share one calorie budget, so carbs are what is left after the other two.
            For each goal, the middle of its calorie suggestion is used. The middle of your
-           <a href="{{ url_for('protein_recommendations') }}">protein target</a> is set aside first, then fat takes 20&ndash;35% of the calories, and the rest is carbs.</p>
+           <a href="{{ url_for('protein_recommendations') }}">protein target</a> is set aside first, then fat takes 20&ndash;35% of the calories
+           (see <a href="{{ url_for('fats_recommendations') }}">fats</a>), and the rest is carbs.</p>
         <ul>
             <li><strong>Upper limit:</strong> carbs are never planned above 65% of calories, the top of the usual 45&ndash;65% range.</li>
             <li><strong>Lower limit:</strong> never below 130 g a day, the official daily minimum for adults. It is about what the brain needs.</li>
