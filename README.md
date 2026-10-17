@@ -100,8 +100,7 @@ my-flask-app-1/
 ├── models.py         database models and startup upgrades
 ├── nutrition.py      nutrition and body-metric calculations
 ├── micronutrients.py sugars, minerals and vitamins: what is tracked and how it is read
-├── protein.py        protein recommendations
-├── macros.py         carb and fat recommendations (built to fit with the protein targets)
+├── macros.py         protein, carb and fat recommendations (built to fit together)
 ├── usda.py           cached USDA API client
 ├── pipeline.py       runs dependent requests in order, with retries
 ├── config.py         settings (reads .env)
