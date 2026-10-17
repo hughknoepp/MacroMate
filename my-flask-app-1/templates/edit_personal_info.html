@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}Edit Personal Information{% endblock %}
+{% block content %}
+<div id="edit-personal-info">
+    <h1>Edit Personal Information</h1>
+    {% if saved %}
+    <p class="profile-summary">Last saved {{ saved.updated_on.strftime('%B %d, %Y') }}.</p>
+    {% else %}
+    <p class="profile-summary">Your details are saved to your account, so you only need to enter them once.</p>
+    {% endif %}
+    {% if out_of_date %}
+    <p class="suggestion-note">It has been more than a year since you saved these details, so please check that your age is still right.</p>
+    {% endif %}
+    <form method="POST" action="{{ url_for('edit_personal_info') }}">
+        <fieldset>
+            <legend>Gender</legend>
+            <input type="radio" id="male" name="gender" value="male" required {% if gender == 'male' %}checked{% endif %}>
+            <label for="male">Male</label>
+            <input type="radio" id="female" name="gender" value="female" required {% if gender == 'female' %}checked{% endif %}>
+            <label for="female">Female</label>
+        </fieldset>
+        <div>
+            <label for="age">Age:</label>
+            <input type="number" id="age" name="age" min="1" max="120" step="1" required value="{{ age }}">
+        </div>
+        <fieldset>
+            <legend>Unit System</legend>
+            <input type="radio" id="metric" name="unit_system" value="metric" required {% if selected_unit == 'metric' %}checked{% endif %}>
+            <label for="metric">Metric (kg, m)</label>
+            <input type="radio" id="imperial" name="unit_system" value="imperial" required {% if selected_unit == 'imperial' %}checked{% endif %}>
+            <label for="imperial">Imperial (lbs, in)</label>
+        </fieldset>
+        <br>
+        <div>
+            <label for="weight">Weight ({{ 'kg' if selected_unit == 'metric' else 'lbs' }}):</label>
+            <input type="number" id="weight" name="weight" step="{% if selected_unit == 'metric' %}0.1{% else %}0.5{% endif %}"
+            min="{% if selected_unit == 'metric' %}0.1{% else %}0.5{% endif %}" max="{% if selected_unit == 'metric' %}635{% else %}1399{% endif %}" required value="{{ weight }}">
+        </div>
+        <div>
+            <label for="height">Height ({{ 'm' if selected_unit == 'metric' else 'in' }}):</label>
+            <input type="number" id="height" name="height" step="{% if selected_unit == 'metric' %}0.01{% else %}0.25{% endif %}"
+            min="{% if selected_unit == 'metric' %}0.01{% else %}0.25{% endif %}" max="{% if selected_unit == 'metric' %}2.72{% else %}107{% endif %}" required value="{{ height }}">
+        </div>
+        <br>
+        <fieldset>
+            <legend>Physical Activity Level</legend>
+            <input type="radio" id="sedentary" name="activity_level" value="sedentary" required {% if activity_level == 'sedentary' %}checked{% endif %}>
+            <label for="sedentary">Sedentary (little or no exercise)</label><br>
+            <input type="radio" id="lightly_active" name="activity_level" value="lightly_active" required {% if activity_level == 'lightly_active' %}checked{% endif %}>
+            <label for="lightly_active">Lightly active (light exercise/sports 1-3 days/week)</label><br>
+            <input type="radio" id="moderately_active" name="activity_level" value="moderately_active" required {% if activity_level == 'moderately_active' %}checked{% endif %}>
+            <label for="moderately_active">Moderately active (moderate exercise/sports 3-5 days/week)</label><br>
+            <input type="radio" id="very_active" name="activity_level" value="very_active" required {% if activity_level == 'very_active' %}checked{% endif %}>
+            <label for="very_active">Very active (hard exercise/sports 6-7 days a week)</label><br>
+        </fieldset>
+        <button type="submit">Save</button>
+    </form>
+    {% if saved %}
+    <p class="profile-summary"><a href="{{ url_for('personal_info') }}">Cancel</a></p>
+    {% endif %}
+</div>
+<script>
+    // Weight/height limits depend on the unit system. Swap them as soon as the unit
+    // changes so the browser's own validation matches the unit being entered.
+    (function () {
+        var limits = {
+            metric:   {weight: {label: 'Weight (kg):',  step: 0.1, min: 0.1,  max: 635},
+                       height: {label: 'Height (m):',   step: 0.01, min: 0.01, max: 2.72}},
+            imperial: {weight: {label: 'Weight (lbs):', step: 0.5, min: 0.5,  max: 1399},
+                       height: {label: 'Height (in):',  step: 0.25, min: 0.25, max: 107}}
+        };
+        function applyUnit(unit) {
+            ['weight', 'height'].forEach(function (field) {
+                var cfg = limits[unit][field];
+                var input = document.getElementById(field);
+                input.step = cfg.step;
+                input.min = cfg.min;
+                input.max = cfg.max;
+                document.querySelector('label[for="' + field + '"]').textContent = cfg.label;
+            });
+        }
+        document.querySelectorAll('input[name="unit_system"]').forEach(function (radio) {
+            radio.addEventListener('change', function () { applyUnit(radio.value); });
+        });
+    })();
+</script>
+{% endblock %}

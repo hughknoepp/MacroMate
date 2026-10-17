@@ -3,6 +3,7 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import date as date_type
 from sqlalchemy import func, inspect, text
+from sqlalchemy.exc import IntegrityError
 
 db = SQLAlchemy()
 
@@ -18,6 +19,22 @@ class User(UserMixin, db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+class Profile(db.Model):
+    """A user's saved personal details (what the Edit Personal Information form collects), so they
+    don't have to enter them again each session. At most one per user.
+
+    Weight and height are stored as typed, in the unit system chosen, so the form can show exactly
+    what was entered. Age is the age when last saved; updated_on says how old that is."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
+    gender = db.Column(db.String(10), nullable=False)
+    age = db.Column(db.Integer, nullable=False)
+    unit_system = db.Column(db.String(10), nullable=False)
+    weight = db.Column(db.Float, nullable=False)
+    height = db.Column(db.Float, nullable=False)
+    activity_level = db.Column(db.String(20), nullable=False)
+    updated_on = db.Column(db.Date, default=date_type.today, nullable=False)
 
 class MealLog(db.Model):
     """Each MealLog instance has an associated id, user_id (from User),
@@ -105,4 +122,32 @@ def ensure_micronutrients_column():
     """
     if 'micronutrients' not in {c['name'] for c in inspect(db.engine).get_columns('meal_item')}:
         db.session.execute(text('ALTER TABLE meal_item ADD COLUMN micronutrients JSON'))
+        db.session.commit()
+
+
+PROFILE_FIELDS = ('gender', 'age', 'unit_system', 'weight', 'height', 'activity_level')
+
+def save_profile(user_id, values):
+    """Create or replace a user's saved personal details. `values` has the PROFILE_FIELDS keys.
+
+    If two saves for a brand-new user arrive at the same moment, the database allows only one
+    row per user; the loser then updates the row the winner created instead of failing.
+    """
+    def fill(row):
+        for field in PROFILE_FIELDS:
+            setattr(row, field, values[field])
+        row.updated_on = date_type.today()
+
+    row = Profile.query.filter_by(user_id=user_id).first()
+    if row is None:
+        row = Profile(user_id=user_id)
+        fill(row)
+        db.session.add(row)
+    else:
+        fill(row)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        fill(Profile.query.filter_by(user_id=user_id).one())
         db.session.commit()

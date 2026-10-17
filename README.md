@@ -19,7 +19,8 @@ Built with Flask, SQLite and the [USDA FoodData Central](https://fdc.nal.usda.go
 - Suggests daily calorie ranges to **lose** (250-750 below TDEE), **maintain** (TDEE +/- 5%) or **gain** (250-500 above TDEE), with the expected weekly weight change.
 - Built-in safeguards: no weight-loss range for an underweight BMI or for under-18s, and never below 1,500 calories/day for men or 1,200 for women.
 - A "how these numbers are calculated" section explains every formula on the page. Results are estimates, not medical advice.
-- Your details are kept only in your login session (not in the database), so the recommendation pages can use them. They are cleared when you log out.
+- Your details are saved to your account on the **Edit Personal Information** page, so you enter them once and they are there every time you log in. The results page and the recommendation pages use the saved details, and you can change them any time (they are pre-filled when you edit). Weight and height are kept exactly as you typed them, in the units you chose.
+- Age is saved as a number, so after a year the page asks you to check it is still right.
 - Links under the calorie suggestions open **protein, carb and fat recommendations**, with daily grams for each goal (lose, maintain, gain). They share one calorie budget so the three fit together:
   - **Protein** is based on your weight, activity level and age (using an adjusted weight at a BMI of 30 or more).
   - **Fats** are 20-35% of calories, with the most saturated fat that stays under 10%.
@@ -54,7 +55,7 @@ Open **http://127.0.0.1:5050**. The database is created automatically on first r
 
 > The app uses port **5050** because on macOS port 5000 is taken by AirPlay Receiver. Use `127.0.0.1` rather than `localhost`.
 
-Run the tests (67 unit tests covering the request pipeline, nutrient extraction and the protein, carb and fat recommendations) from `my-flask-app-1/`:
+Run the tests (81 unit tests covering the request pipeline, nutrient extraction, the protein, carb and fat recommendations, and saved personal details) from `my-flask-app-1/`:
 
 ```bash
 python -m unittest discover -v
@@ -83,14 +84,15 @@ python -m unittest discover -v
 | `/log`, `/log/<YYYY-MM-DD>` | GET | Items and macro totals for a day |
 | `/log/averages?days=7` | GET | Rolling averages |
 | `/log/items/<id>/delete` | POST | Remove a logged item (see Known limitations) |
-| `/personal-info` | GET, POST | BMI, BMR, TDEE and calorie suggestions |
-| `/recommendations/protein`, `/recommendations/carbs`, `/recommendations/fats` | GET | Daily targets for each macronutrient (need your personal info first) |
+| `/personal-info` | GET | Your saved details with BMI, BMR, TDEE and calorie suggestions |
+| `/personal-info/edit` | GET, POST | Enter or change your personal information (saved to your account) |
+| `/recommendations/protein`, `/recommendations/carbs`, `/recommendations/fats` | GET | Daily targets for each macronutrient (need your saved personal info) |
 
 Earlier URLs (`/log/search`, `/log/summary/...`) still work and redirect permanently to the ones above.
 
 ## How it works
 
-- **Data model** (`models.py`): `User` has `MealLog`s (one per user per date, enforced by a database constraint), and each `MealLog` has `MealItem`s (food, grams, calories, protein, carbs, fat, plus the sugars, minerals and vitamins the USDA reported for it). Existing databases are upgraded automatically at startup.
+- **Data model** (`models.py`): `User` has `MealLog`s (one per user per date, enforced by a database constraint), and each `MealLog` has `MealItem`s (food, grams, calories, protein, carbs, fat, plus the sugars, minerals and vitamins the USDA reported for it). Each `User` also has at most one `Profile`: their saved personal details. Existing databases are upgraded automatically at startup.
 - **USDA lookups** (`usda.py`, `pipeline.py`): responses are cached on disk in `usda_cache.sqlite` (search results for 6 hours, a food's nutrient record for 30 days, and your API key is never stored in the cache). Logging a food runs two dependent steps in order, fetching the record and then reading its nutrients. Brief network or server errors are retried, and any failure shows a friendly message instead of an error page.
 - **Calculations** (`nutrition.py`): daily totals, rolling averages (one database query each), BMI, BMR, TDEE and the calorie suggestions.
 
@@ -98,6 +100,7 @@ Earlier URLs (`/log/search`, `/log/summary/...`) still work and redirect permane
 my-flask-app-1/
 ├── app.py            routes and request handling
 ├── models.py         database models and startup upgrades
+├── personal_details.py  checks and converts the personal information form
 ├── nutrition.py      nutrition and body-metric calculations
 ├── micronutrients.py sugars, minerals and vitamins: what is tracked and how it is read
 ├── macros.py         protein, carb and fat recommendations (built to fit together)
@@ -114,7 +117,6 @@ my-flask-app-1/
 - **Development server only.** `app.py` runs Flask with `debug=True`. Do not expose it publicly as is.
 - **Database location.** In a standard setup (`.venv` folder) the SQLite database is `instance/app.db`. If you instead create the virtual environment in the project folder itself, Flask puts it at `var/app-instance/app.db`, so deleting that folder (for example, to rebuild the environment) would delete your data.
 - **No delete button yet.** The remove-item route exists, but no page links to it.
-- **Personal info isn't linked from the dashboard.** Open `/personal-info` directly.
 - **No CSRF protection** on forms, and logout is a plain link (GET).
 - **Averages are macros only.** Rolling averages cover calories, protein, carbs and fat, not the sugars, minerals and vitamins.
 - **Units.** Food nutrition comes from the USDA per 100 g, so foods are logged in grams only.

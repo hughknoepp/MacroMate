@@ -1,8 +1,9 @@
-from flask import Flask, render_template, redirect, url_for, request, flash, session
+from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from config import Config
-from models import (db, User, MealLog, MealItem, ensure_meal_log_uniqueness, ensure_meal_item_index,
-                    ensure_micronutrients_column)
+from models import (db, User, MealLog, MealItem, Profile, save_profile, ensure_meal_log_uniqueness,
+                    ensure_meal_item_index, ensure_micronutrients_column)
+from personal_details import FIELDS as PERSONAL_FIELDS, parse_form as parse_personal_details, metric_values
 from micronutrients import (extract_micronutrients, scale_micronutrients, micronutrient_totals,
                             group_rows, format_amount)
 from sqlalchemy import func
@@ -131,7 +132,6 @@ def login():
 
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
-            session.pop('profile', None)  # never carry someone else's details into a new login
             login_user(user)
             flash('Login successful!')
             return redirect(next_url or url_for('dashboard'))
@@ -145,7 +145,6 @@ def login():
 @login_required
 def logout():
     logout_user()
-    session.pop('profile', None)
     flash('You have been logged out.')
     return redirect(url_for('home'))
 
@@ -153,13 +152,6 @@ def logout():
 @login_required
 def dashboard():
     return render_template('dashboard.html', user=current_user)
-
-PERSONAL_INFO_FIELDS = ('gender', 'age', 'unit_system', 'weight', 'height', 'activity_level')
-PERSONAL_INFO_CHOICES = {
-    'gender': {'male', 'female'},
-    'unit_system': {'metric', 'imperial'},
-    'activity_level': {'sedentary', 'lightly_active', 'moderately_active', 'very_active'},
-}
 
 def body_metrics(weight_kg, height_m, age, gender, activity_level):
     """BMI, BMR and TDEE (BMR and TDEE as whole calories/day, halves rounding up).
@@ -175,101 +167,84 @@ def body_metrics(weight_kg, height_m, age, gender, activity_level):
     return bmi, int(bmr + 0.5), int(tdee + 0.5)
 
 def load_profile():
-    """The details last submitted on the Personal Information page, kept in the session.
-
-    Other pages (such as the nutrient recommendations) use them so you don't have to type them
-    again. Returns None if there are none, or if what is stored doesn't hold up (it is checked
-    again here, in case the stored data is old or damaged).
-    """
-    profile = session.get('profile')
+    """The logged-in user's saved personal details, or None if they haven't saved any (or what is
+    saved no longer adds up). Returned as a dict: what was typed (weight, height, in the chosen
+    unit system), the same in metric (weight_kg, height_m), and when it was last saved."""
+    row = Profile.query.filter_by(user_id=current_user.id).first()
+    if row is None:
+        return None
+    weight_kg, height_m = metric_values(row.unit_system, row.weight, row.height)
     try:
-        if (isinstance(profile, dict)
-                and profile['gender'] in PERSONAL_INFO_CHOICES['gender']
-                and profile['unit_system'] in PERSONAL_INFO_CHOICES['unit_system']
-                and profile['activity_level'] in PERSONAL_INFO_CHOICES['activity_level']
-                and type(profile['age']) is int and 1 <= profile['age'] <= 120
-                and type(profile['weight_kg']) in (int, float) and type(profile['height_m']) in (int, float)):
-            body_metrics(profile['weight_kg'], profile['height_m'], profile['age'],
-                         profile['gender'], profile['activity_level'])
-            return profile
-    except (KeyError, AssertionError, ValueError, TypeError):
-        pass
-    return None
+        body_metrics(weight_kg, height_m, row.age, row.gender, row.activity_level)
+    except (AssertionError, ValueError):
+        return None
+    return {'gender': row.gender, 'age': row.age, 'unit_system': row.unit_system, 'weight': row.weight,
+            'height': row.height, 'weight_kg': weight_kg, 'height_m': height_m,
+            'activity_level': row.activity_level, 'updated_on': row.updated_on}
 
-@app.route('/personal-info', methods=['GET', 'POST'])
+def details_out_of_date(profile):
+    """Age is saved as a number, so after a year it may be wrong: ask the person to check it."""
+    return (date_type.today() - profile['updated_on']).days > 365
+
+def profile_texts(profile):
+    """Weight, height and activity as short text, in the unit system the person chose."""
+    imperial = profile['unit_system'] == 'imperial'
+    return {'weight_text': f"{profile['weight']:g} {'lb' if imperial else 'kg'}",
+            'height_text': f"{profile['height']:g} {'in' if imperial else 'm'}",
+            'activity_label': ACTIVITY_LABELS[profile['activity_level']]}
+
+def need_personal_info(message='Add your personal information first, and then you can see your recommendations.'):
+    flash(message)
+    return redirect(url_for('edit_personal_info'))
+
+@app.route('/personal-info')
 @login_required
 def personal_info():
-    bmi = bmr = tdee = None
-    category = suggestions = None
-    selected_unit = 'metric'
-    gender = age = weight = height = activity_level = ''
+    """Your saved details, with your BMI, BMR, TDEE and calorie suggestions."""
+    profile = load_profile()
+    if profile is None:
+        return need_personal_info('Add your personal information to see your calorie and nutrient numbers.')
+    bmi, bmr, tdee = body_metrics(profile['weight_kg'], profile['height_m'], profile['age'],
+                                  profile['gender'], profile['activity_level'])
+    suggestions = calorie_suggestions(tdee, profile['gender'], profile['age'], bmi)
+    return render_template('personal_info.html', profile=profile, bmi=bmi, bmi_category=bmi_category(bmi),
+                           bmr=bmr, tdee=tdee, suggestions=suggestions, selected_unit=profile['unit_system'],
+                           out_of_date=details_out_of_date(profile), **profile_texts(profile))
 
+@app.route('/personal-info/edit', methods=['GET', 'POST'])
+@login_required
+def edit_personal_info():
+    """The form for entering or changing your personal details. They are saved to your account."""
+    saved = load_profile()
     if request.method == 'POST':
-        # Every field is required, and each must be submitted exactly once, so a
-        # radio group can't carry more than one choice (the browser enforces this
-        # too, but requests can be crafted by hand).
-        values = {}
-        for field in PERSONAL_INFO_FIELDS:
-            submitted = [v.strip() for v in request.form.getlist(field)]
-            if not submitted or not submitted[0]:
-                flash('All fields are required.')
-                return redirect(url_for('personal_info'))
-            if len(submitted) > 1:
-                flash(f"Please select only one option for {field.replace('_', ' ')}.")
-                return redirect(url_for('personal_info'))
-            values[field] = submitted[0]
-
-        for field, choices in PERSONAL_INFO_CHOICES.items():
-            if values[field] not in choices:
-                flash(f"Invalid selection for {field.replace('_', ' ')}.")
-                return redirect(url_for('personal_info'))
-
-        try:
-            age_value = int(values['age'])
-            weight_value = float(values['weight'])
-            height_value = float(values['height'])
-        except ValueError:
-            flash('Age must be a whole number, and weight and height must be numbers.')
+        values, error = parse_personal_details(request.form)
+        if error is None:
+            weight_kg, height_m = metric_values(values['unit_system'], values['weight'], values['height'])
+            try:
+                body_metrics(weight_kg, height_m, values['age'], values['gender'], values['activity_level'])
+            except AssertionError:
+                error = 'Invalid weight or height values. Please ensure they are within reasonable ranges.'
+            except ValueError:
+                error = 'Those values give an unrealistic calorie estimate. Please check your entries.'
+        if error is None:
+            save_profile(current_user.id, values)
+            flash('Your personal information was saved.')
             return redirect(url_for('personal_info'))
+        # Show the form again with what was typed, so nothing has to be re-entered
+        flash(error)
+        form = {field: request.form.get(field, '') for field in PERSONAL_FIELDS}
+        unit = form['unit_system'] if form['unit_system'] in ('metric', 'imperial') else 'metric'
+        return render_template('edit_personal_info.html', saved=saved, selected_unit=unit,
+                               out_of_date=False, **{k: v for k, v in form.items() if k != 'unit_system'}), 400
 
-        if not 1 <= age_value <= 120:
-            flash('Age must be between 1 and 120.')
-            return redirect(url_for('personal_info'))
-
-        selected_unit = values['unit_system']
-        if selected_unit == 'imperial':
-            weight_kg = weight_value * 0.453592
-            height_m = height_value * 0.0254
-        else:
-            weight_kg = weight_value
-            height_m = height_value
-
-        # BMR and TDEE are calculated in metric units, so use the converted values.
-        try:
-            bmi, bmr, tdee = body_metrics(weight_kg, height_m, age_value, values['gender'], values['activity_level'])
-        except AssertionError:
-            flash('Invalid weight or height values. Please ensure they are within reasonable ranges.')
-            return redirect(url_for('personal_info'))
-        except ValueError:
-            flash('Those values give an unrealistic calorie estimate. Please check your entries.')
-            return redirect(url_for('personal_info'))
-
-        # Keep these (in metric) for the recommendation pages that come after this one
-        session['profile'] = {'gender': values['gender'], 'age': age_value, 'unit_system': selected_unit,
-                              'weight_kg': weight_kg, 'height_m': height_m,
-                              'activity_level': values['activity_level']}
-
-        category = bmi_category(bmi)
-        suggestions = calorie_suggestions(tdee, values['gender'], age_value, bmi)
-
-        # Hand the submitted values back so the form keeps them
-        gender, activity_level = values['gender'], values['activity_level']
-        age, weight, height = age_value, weight_value, height_value
-
-    return render_template('personal_info.html', bmi=bmi, bmi_category=category, bmr=bmr, tdee=tdee,
-                           suggestions=suggestions, selected_unit=selected_unit,
-                           gender=gender, age=age, weight=weight, height=height,
-                           activity_level=activity_level)
+    if saved is None:
+        form, unit = dict.fromkeys(('gender', 'age', 'weight', 'height', 'activity_level'), ''), 'metric'
+    else:
+        form = {'gender': saved['gender'], 'age': saved['age'], 'weight': f"{saved['weight']:g}",
+                'height': f"{saved['height']:g}", 'activity_level': saved['activity_level']}
+        unit = saved['unit_system']
+    return render_template('edit_personal_info.html', saved=saved, selected_unit=unit,
+                           out_of_date=saved is not None and details_out_of_date(saved), **form)
 
 ACTIVITY_LABELS = {'sedentary': 'sedentary', 'lightly_active': 'lightly active',
                    'moderately_active': 'moderately active', 'very_active': 'very active'}
@@ -288,13 +263,8 @@ def recommendation_inputs():
     return {
         'profile': profile, 'bmi': bmi, 'tdee': tdee, 'suggestions': suggestions, 'use_lbs': use_lbs,
         'calorie_ranges': {goal: suggestions[goal] for goal in ('lose', 'maintain', 'gain')},
-        'weight_text': f"{profile['weight_kg'] / KG_PER_LB:.0f} lb" if use_lbs else f"{profile['weight_kg']:.1f} kg",
-        'activity_label': ACTIVITY_LABELS[profile['activity_level']],
+        **profile_texts(profile),
     }
-
-def need_personal_info():
-    flash('Enter your personal information first, and then you can see your recommendations.')
-    return redirect(url_for('personal_info'))
 
 def protein_for(inputs):
     profile = inputs['profile']
