@@ -114,6 +114,15 @@ nav a:hover {
     text-align: center;
 }
 
+.profile-summary {
+    text-align: center;
+    color: #555;
+}
+
+#nutrient-recommendations {
+    margin: 20px 0;
+}
+
 .suggestion-cards {
     display: flex;
     flex-wrap: wrap;

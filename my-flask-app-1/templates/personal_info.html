@@ -112,6 +112,10 @@
         {% endfor %}
         <p class="suggestion-note">These are estimates, not medical advice. Check with a doctor or dietitian before making big changes to how you eat.</p>
     </div>
+
+    <div id="nutrient-recommendations" class="result-block">
+        <a href="{{ url_for('protein_recommendations') }}" class="btn-link">See my protein recommendations</a>
+    </div>
     {% endif %}
 
     <div id="calculation-info">

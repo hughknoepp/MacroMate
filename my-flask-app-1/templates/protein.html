@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Protein Recommendations{% endblock %}
+{% block content %}
+<div id="protein-recommendations">
+    <h1>Protein Recommendations</h1>
+    <p class="profile-summary">Based on your details: {{ profile.age }}-year-old {{ profile.gender }}, {{ weight_text }}, {{ activity_label }}.</p>
+
+    {% if rec.minor %}
+    <div class="result-block">
+        <p class="suggestion-note">These recommendations are designed for adults. If you are under 18, protein needs depend on your age and growth, so talk to a doctor or dietitian.</p>
+    </div>
+    {% else %}
+    <div id="protein-targets" class="result-block">
+        <h2>Daily protein targets</h2>
+        <div class="suggestion-cards">
+            {% for goal in rec.goals %}
+            <div class="suggestion-card" id="protein-{{ goal.key }}">
+                <h3>{{ goal.title }}</h3>
+                <p class="suggestion-range">{{ goal.grams_low }}&ndash;{{ goal.grams_high }} g</p>
+                <p>protein/day</p>
+                <p class="suggestion-rate">
+                    {{ '%.1f'|format(goal.per_kg_low) }}&ndash;{{ '%.1f'|format(goal.per_kg_high) }} g per kg
+                    {%- if use_lbs %} ({{ '%.2f'|format(goal.per_kg_low / 2.20462) }}&ndash;{{ '%.2f'|format(goal.per_kg_high / 2.20462) }} g per lb){% endif %}
+                </p>
+                <p class="suggestion-rate">About {{ goal.percent_low }}&ndash;{{ goal.percent_high }}% of your calories{% if goal.capped %} (held to 35%){% endif %}</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% for note in rec.notes %}
+        <p class="suggestion-note">{{ note }}</p>
+        {% endfor %}
+        <p class="suggestion-note">These are estimates, not medical advice. Check with a doctor or dietitian before making big changes to how you eat, especially if you have kidney disease or another medical condition.</p>
+    </div>
+
+    <div id="protein-tips" class="result-block">
+        <h2>Making it work</h2>
+        <p>Spread protein over your meals: about {{ rec.per_meal[0] }}&ndash;{{ rec.per_meal[1] }} g in each meal is a good aim.</p>
+        <p>Good sources include poultry, fish, eggs, dairy, beans and lentils, tofu, nuts and seeds.</p>
+        <p><a href="{{ url_for('food_search') }}" class="btn-link">Search foods to see their protein</a></p>
+    </div>
+    {% endif %}
+
+    <div id="calculation-info">
+        <h2>How these numbers are worked out</h2>
+        {% if not rec.minor %}
+        <p>Each target is a number of grams of protein per kilogram of body weight per day, multiplied by your weight.
+           {% if rec.adjusted %}Because your BMI is 30 or more, the weight used is an adjusted {{ basis_text }}: the weight at a BMI of 25 plus a quarter of your extra weight, so body fat doesn't inflate the target.
+           {% else %}The weight used is your own, {{ basis_text }}.{% endif %}</p>
+        <ul>
+            <li><strong>Baseline:</strong> the official daily allowance is 0.8 g per kg, the minimum for a healthy adult. People who are more active need more.</li>
+            <li><strong>Active people:</strong> sports-nutrition guidance is roughly 1.2&ndash;2.0 g per kg.</li>
+            <li><strong>Losing weight:</strong> targets are higher, because extra protein helps you keep muscle while eating less.</li>
+            <li><strong>Gaining weight:</strong> up to about 2.2 g per kg supports building muscle, together with strength training.</li>
+            <li><strong>Age 65 and over:</strong> at least 1.0 g per kg to maintain, and 1.2 g per kg when changing weight.</li>
+        </ul>
+        <p>Amounts are rounded to the nearest 5 g. The share of calories uses the middle of each calorie suggestion on the
+           personal information page, and a target is never allowed above 35% of those calories, the top of the usual 10&ndash;35% range.</p>
+        {% endif %}
+        <p><a href="{{ url_for('personal_info') }}">Update my personal information</a></p>
+    </div>
+</div>
+{% endblock %}

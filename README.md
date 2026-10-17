@@ -18,7 +18,9 @@ Built with Flask, SQLite and the [USDA FoodData Central](https://fdc.nal.usda.go
 - Shows your **BMI** with its category, your **BMR** (Mifflin-St Jeor equation) and your **TDEE** (BMR x activity factor).
 - Suggests daily calorie ranges to **lose** (250-750 below TDEE), **maintain** (TDEE +/- 5%) or **gain** (250-500 above TDEE), with the expected weekly weight change.
 - Built-in safeguards: no weight-loss range for an underweight BMI or for under-18s, and never below 1,500 calories/day for men or 1,200 for women.
-- A "how these numbers are calculated" section explains every formula on the page. Results are estimates, not medical advice, and are not saved.
+- A "how these numbers are calculated" section explains every formula on the page. Results are estimates, not medical advice.
+- Your details are kept only in your login session (not in the database), so the recommendation pages can use them. They are cleared when you log out.
+- A link under the calorie suggestions opens **protein recommendations**: daily grams for each goal, based on your weight, activity level and age. Targets use an adjusted weight at a BMI of 30 or more, are held to 35% of calories, and are not given for under-18s. More nutrient pages will follow at `/recommendations/<nutrient>`.
 
 **Accounts**
 - Register, log in and log out. Passwords are stored hashed, and every page except the welcome page, login and register requires an account.
@@ -48,7 +50,7 @@ Open **http://127.0.0.1:5050**. The database is created automatically on first r
 
 > The app uses port **5050** because on macOS port 5000 is taken by AirPlay Receiver. Use `127.0.0.1` rather than `localhost`.
 
-Run the tests (35 unit tests covering the request pipeline and nutrient extraction) from `my-flask-app-1/`:
+Run the tests (51 unit tests covering the request pipeline, nutrient extraction and protein recommendations) from `my-flask-app-1/`:
 
 ```bash
 python -m unittest discover -v
@@ -78,6 +80,7 @@ python -m unittest discover -v
 | `/log/averages?days=7` | GET | Rolling averages |
 | `/log/items/<id>/delete` | POST | Remove a logged item (see Known limitations) |
 | `/personal-info` | GET, POST | BMI, BMR, TDEE and calorie suggestions |
+| `/recommendations/protein` | GET | Daily protein targets (needs your personal info first) |
 
 Earlier URLs (`/log/search`, `/log/summary/...`) still work and redirect permanently to the ones above.
 
@@ -93,6 +96,7 @@ my-flask-app-1/
 ├── models.py         database models and startup upgrades
 ├── nutrition.py      nutrition and body-metric calculations
 ├── micronutrients.py sugars, minerals and vitamins: what is tracked and how it is read
+├── protein.py        protein recommendations
 ├── usda.py           cached USDA API client
 ├── pipeline.py       runs dependent requests in order, with retries
 ├── config.py         settings (reads .env)

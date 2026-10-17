@@ -1,4 +1,4 @@
-from flask import Flask, render_template, redirect, url_for, request, flash
+from flask import Flask, render_template, redirect, url_for, request, flash, session
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from config import Config
 from models import (db, User, MealLog, MealItem, ensure_meal_log_uniqueness, ensure_meal_item_index,
@@ -9,6 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from usda import search_food, get_food_details
 from pipeline import RequestPipeline
+from protein import protein_recommendations as build_protein_recommendations, KG_PER_LB
 from datetime import datetime, date as date_type
 from nutrition import (get_daily_items, totals_from_items, get_rolling_average, calculate_bmi,
                        calculate_bmr, calculate_tdee, bmi_category, calorie_suggestions)
@@ -128,6 +129,7 @@ def login():
 
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
+            session.pop('profile', None)  # never carry someone else's details into a new login
             login_user(user)
             flash('Login successful!')
             return redirect(next_url or url_for('dashboard'))
@@ -141,6 +143,7 @@ def login():
 @login_required
 def logout():
     logout_user()
+    session.pop('profile', None)
     flash('You have been logged out.')
     return redirect(url_for('home'))
 
@@ -155,6 +158,41 @@ PERSONAL_INFO_CHOICES = {
     'unit_system': {'metric', 'imperial'},
     'activity_level': {'sedentary', 'lightly_active', 'moderately_active', 'very_active'},
 }
+
+def body_metrics(weight_kg, height_m, age, gender, activity_level):
+    """BMI, BMR and TDEE (BMR and TDEE as whole calories/day, halves rounding up).
+
+    TDEE is worked out from the unrounded BMR. Raises AssertionError if the measurements are
+    out of range and ValueError if they give an unrealistic (zero or negative) calorie estimate.
+    """
+    bmi = calculate_bmi(weight_kg, height_m)
+    bmr = calculate_bmr(weight_kg, height_m, age, gender)
+    tdee = calculate_tdee(bmr, activity_level)
+    if tdee <= 0:
+        raise ValueError('unrealistic calorie estimate')
+    return bmi, int(bmr + 0.5), int(tdee + 0.5)
+
+def load_profile():
+    """The details last submitted on the Personal Information page, kept in the session.
+
+    Other pages (such as the nutrient recommendations) use them so you don't have to type them
+    again. Returns None if there are none, or if what is stored doesn't hold up (it is checked
+    again here, in case the stored data is old or damaged).
+    """
+    profile = session.get('profile')
+    try:
+        if (isinstance(profile, dict)
+                and profile['gender'] in PERSONAL_INFO_CHOICES['gender']
+                and profile['unit_system'] in PERSONAL_INFO_CHOICES['unit_system']
+                and profile['activity_level'] in PERSONAL_INFO_CHOICES['activity_level']
+                and type(profile['age']) is int and 1 <= profile['age'] <= 120
+                and type(profile['weight_kg']) in (int, float) and type(profile['height_m']) in (int, float)):
+            body_metrics(profile['weight_kg'], profile['height_m'], profile['age'],
+                         profile['gender'], profile['activity_level'])
+            return profile
+    except (KeyError, AssertionError, ValueError, TypeError):
+        pass
+    return None
 
 @app.route('/personal-info', methods=['GET', 'POST'])
 @login_required
@@ -205,21 +243,19 @@ def personal_info():
             height_m = height_value
 
         # BMR and TDEE are calculated in metric units, so use the converted values.
-        # The calculators assert on out-of-range input, hence the AssertionError catch.
         try:
-            bmi = calculate_bmi(weight_kg, height_m)
-            bmr = calculate_bmr(weight_kg, height_m, age_value, values['gender'])
-            tdee = calculate_tdee(bmr, values['activity_level'])
+            bmi, bmr, tdee = body_metrics(weight_kg, height_m, age_value, values['gender'], values['activity_level'])
         except AssertionError:
             flash('Invalid weight or height values. Please ensure they are within reasonable ranges.')
             return redirect(url_for('personal_info'))
-
-        if tdee <= 0:
+        except ValueError:
             flash('Those values give an unrealistic calorie estimate. Please check your entries.')
             return redirect(url_for('personal_info'))
-        # Whole calories/day, rounding halves up. TDEE is worked out from the unrounded BMR.
-        bmr = int(bmr + 0.5)
-        tdee = int(tdee + 0.5)
+
+        # Keep these (in metric) for the recommendation pages that come after this one
+        session['profile'] = {'gender': values['gender'], 'age': age_value, 'unit_system': selected_unit,
+                              'weight_kg': weight_kg, 'height_m': height_m,
+                              'activity_level': values['activity_level']}
 
         category = bmi_category(bmi)
         suggestions = calorie_suggestions(tdee, values['gender'], age_value, bmi)
@@ -232,6 +268,49 @@ def personal_info():
                            suggestions=suggestions, selected_unit=selected_unit,
                            gender=gender, age=age, weight=weight, height=height,
                            activity_level=activity_level)
+
+ACTIVITY_LABELS = {'sedentary': 'sedentary', 'lightly_active': 'lightly active',
+                   'moderately_active': 'moderately active', 'very_active': 'very active'}
+
+def recommendation_inputs():
+    """What every nutrient-recommendation page starts from, or None if the person hasn't entered
+    their personal information yet. Protein, carbs and fats all begin here, so they are built from
+    the same calorie targets and fit together."""
+    profile = load_profile()
+    if profile is None:
+        return None
+    bmi, _, tdee = body_metrics(profile['weight_kg'], profile['height_m'], profile['age'],
+                                profile['gender'], profile['activity_level'])
+    suggestions = calorie_suggestions(tdee, profile['gender'], profile['age'], bmi)
+    use_lbs = profile['unit_system'] == 'imperial'
+    return {
+        'profile': profile, 'bmi': bmi, 'tdee': tdee, 'suggestions': suggestions, 'use_lbs': use_lbs,
+        'calorie_ranges': {goal: suggestions[goal] for goal in ('lose', 'maintain', 'gain')},
+        'weight_text': f"{profile['weight_kg'] / KG_PER_LB:.0f} lb" if use_lbs else f"{profile['weight_kg']:.1f} kg",
+        'activity_label': ACTIVITY_LABELS[profile['activity_level']],
+    }
+
+def need_personal_info():
+    flash('Enter your personal information first, and then you can see your recommendations.')
+    return redirect(url_for('personal_info'))
+
+def protein_for(inputs):
+    profile = inputs['profile']
+    return build_protein_recommendations(
+        profile['weight_kg'], profile['height_m'], profile['age'], profile['activity_level'], inputs['bmi'],
+        inputs['calorie_ranges'], inputs['suggestions']['notes'])
+
+@app.route('/recommendations/protein')
+@login_required
+def protein_recommendations():
+    inputs = recommendation_inputs()
+    if inputs is None:
+        return need_personal_info()
+    recommendation = protein_for(inputs)
+    basis_text = (None if recommendation['basis_kg'] is None else
+                  f"{recommendation['basis_kg'] / KG_PER_LB:.0f} lb" if inputs['use_lbs'] else f"{recommendation['basis_kg']:.1f} kg")
+    return render_template('protein.html', rec=recommendation, basis_text=basis_text,
+                           bmi_category=bmi_category(inputs['bmi']), **inputs)
 
 @app.route('/foods/search')
 @login_required
