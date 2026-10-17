@@ -114,7 +114,11 @@
     </div>
 
     <div id="nutrient-recommendations" class="result-block">
-        <a href="{{ url_for('protein_recommendations') }}" class="btn-link">See my protein recommendations</a>
+        <h2>Nutrient Recommendations</h2>
+        <div class="rec-links">
+            <a href="{{ url_for('protein_recommendations') }}" class="btn-link">Protein</a>
+            <a href="{{ url_for('carbs_recommendations') }}" class="btn-link">Carbs</a>
+        </div>
     </div>
     {% endif %}
 

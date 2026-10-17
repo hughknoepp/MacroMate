@@ -114,6 +114,46 @@ nav a:hover {
     text-align: center;
 }
 
+.rec-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+}
+
+/* Switcher between the Protein / Carbs / Fats pages. (Not the top bar, which is the only plain <nav>.) */
+.rec-nav {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 0 0 16px;
+    padding: 0;
+    background: none;
+}
+
+.rec-nav a {
+    padding: 6px 16px;
+    border: 1px solid #ccc;
+    border-radius: 999px;
+    color: #333;
+    text-decoration: none;
+}
+
+.rec-nav a:hover {
+    background: #f0f0f0;
+    text-decoration: none;
+}
+
+.rec-nav a.active:hover {
+    background: #333;
+}
+
+.rec-nav a.active {
+    background: #333;
+    border-color: #333;
+    color: #fff;
+}
+
 .profile-summary {
     text-align: center;
     color: #555;

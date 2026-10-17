@@ -3,6 +3,7 @@
 {% block content %}
 <div id="protein-recommendations">
     <h1>Protein Recommendations</h1>
+    {% with current = 'protein' %}{% include '_recommendation_nav.html' %}{% endwith %}
     <p class="profile-summary">Based on your details: {{ profile.age }}-year-old {{ profile.gender }}, {{ weight_text }}, {{ activity_label }}.</p>
 
     {% if rec.minor %}

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from usda import search_food, get_food_details
 from pipeline import RequestPipeline
 from protein import protein_recommendations as build_protein_recommendations, KG_PER_LB
+from macros import carb_recommendations as build_carb_recommendations
 from datetime import datetime, date as date_type
 from nutrition import (get_daily_items, totals_from_items, get_rolling_average, calculate_bmi,
                        calculate_bmr, calculate_tdee, bmi_category, calorie_suggestions)
@@ -311,6 +312,17 @@ def protein_recommendations():
                   f"{recommendation['basis_kg'] / KG_PER_LB:.0f} lb" if inputs['use_lbs'] else f"{recommendation['basis_kg']:.1f} kg")
     return render_template('protein.html', rec=recommendation, basis_text=basis_text,
                            bmi_category=bmi_category(inputs['bmi']), **inputs)
+
+@app.route('/recommendations/carbs')
+@login_required
+def carbs_recommendations():
+    inputs = recommendation_inputs()
+    if inputs is None:
+        return need_personal_info()
+    # Carbs are what is left after protein and fat, so they are built from the protein targets
+    recommendation = build_carb_recommendations(inputs['profile']['age'], inputs['calorie_ranges'],
+                                                protein_for(inputs)['goals'], inputs['suggestions']['notes'])
+    return render_template('carbs.html', rec=recommendation, **inputs)
 
 @app.route('/foods/search')
 @login_required

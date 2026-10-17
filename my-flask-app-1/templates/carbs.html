@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Carb Recommendations{% endblock %}
+{% block content %}
+<div id="carb-recommendations">
+    <h1>Carb Recommendations</h1>
+    {% with current = 'carbs' %}{% include '_recommendation_nav.html' %}{% endwith %}
+    <p class="profile-summary">Based on your details: {{ profile.age }}-year-old {{ profile.gender }}, {{ weight_text }}, {{ activity_label }}.</p>
+
+    {% if rec.minor %}
+    <div class="result-block">
+        <p class="suggestion-note">These recommendations are designed for adults. If you are under 18, carbohydrate needs depend on your age, growth and activity, so talk to a doctor or dietitian.</p>
+    </div>
+    {% else %}
+    <div id="carb-targets" class="result-block">
+        <h2>Daily carb targets</h2>
+        <div class="suggestion-cards">
+            {% for goal in rec.goals %}
+            <div class="suggestion-card" id="carbs-{{ goal.key }}">
+                <h3>{{ goal.title }}</h3>
+                <p class="suggestion-range">{{ goal.grams_low }}&ndash;{{ goal.grams_high }} g</p>
+                <p>carbs/day</p>
+                <p class="suggestion-rate">About {{ goal.percent_low }}&ndash;{{ goal.percent_high }}% of your calories</p>
+                <p class="suggestion-rate">Fiber: about {{ goal.fiber_g }} g</p>
+                <p class="suggestion-rate">Added sugars: under {{ goal.added_sugar_max_g }} g</p>
+                {% if goal.at_minimum %}<p class="suggestion-rate">Held at the 130 g daily minimum</p>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% for note in rec.notes %}
+        <p class="suggestion-note">{{ note }}</p>
+        {% endfor %}
+        <p class="suggestion-note">These are estimates, not medical advice. Check with a doctor or dietitian before making big changes to how you eat, especially if you have diabetes or another medical condition.</p>
+    </div>
+
+    <div id="carb-tips" class="result-block">
+        <h2>Making it work</h2>
+        <p>Favor whole-food carbs: whole grains, fruit, vegetables, beans and lentils, and dairy. They bring fiber and vitamins with them.</p>
+        <p>If you train hard, put more of your carbs around your workouts.</p>
+        <p><a href="{{ url_for('food_search') }}" class="btn-link">Search foods to see their carbs</a></p>
+    </div>
+    {% endif %}
+
+    <div id="calculation-info">
+        <h2>How these numbers are worked out</h2>
+        {% if not rec.minor %}
+        <p>Protein, carbs and fat share one calorie budget, so carbs are what is left after the other two.
+           For each goal, the middle of its calorie suggestion is used. The middle of your
+           <a href="{{ url_for('protein_recommendations') }}">protein target</a> is set aside first, then fat takes 20&ndash;35% of the calories, and the rest is carbs.</p>
+        <ul>
+            <li><strong>Upper limit:</strong> carbs are never planned above 65% of calories, the top of the usual 45&ndash;65% range.</li>
+            <li><strong>Lower limit:</strong> never below 130 g a day, the official daily minimum for adults. It is about what the brain needs.</li>
+            <li><strong>Fiber:</strong> about 14 g for every 1,000 calories.</li>
+            <li><strong>Added sugars:</strong> under 10% of calories. Your daily summary shows total sugars, which also include the sugar naturally in fruit and milk, so it will read higher than added sugars alone.</li>
+        </ul>
+        <p>Amounts are rounded to the nearest 5 g.</p>
+        {% endif %}
+        <p><a href="{{ url_for('personal_info') }}">Update my personal information</a></p>
+    </div>
+</div>
+{% endblock %}
