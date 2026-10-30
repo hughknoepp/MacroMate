@@ -4,6 +4,7 @@ from config import Config
 from models import (db, User, MealLog, MealItem, Profile, save_profile, ensure_meal_log_uniqueness,
                     ensure_meal_item_index, ensure_micronutrients_column)
 from personal_details import FIELDS as PERSONAL_FIELDS, parse_form as parse_personal_details, metric_values
+from trends import DAY_CHOICES, STAT_CHOICES, parse_trend_params, build_charts
 from micronutrients import (extract_micronutrients, scale_micronutrients, micronutrient_totals,
                             group_rows, format_amount)
 from sqlalchemy import func
@@ -14,7 +15,7 @@ from macros import (protein_recommendations as build_protein_recommendations,
                     carb_recommendations as build_carb_recommendations,
                     fat_recommendations as build_fat_recommendations, KG_PER_LB)
 from datetime import datetime, date as date_type
-from nutrition import (get_daily_items, totals_from_items, get_rolling_average, calculate_bmi,
+from nutrition import (get_daily_items, totals_from_items, get_rolling_average, get_rolling_data, calculate_bmi,
                        calculate_bmr, calculate_tdee, bmi_category, calorie_suggestions)
 import requests
 from werkzeug.routing import BaseConverter, ValidationError
@@ -148,10 +149,24 @@ def logout():
     flash('You have been logged out.')
     return redirect(url_for('home'))
 
+def trend_context(args):
+    """What the progress charts need: the chosen period and statistic (from the page's query
+    string, ?days=30&stat=protein), the charts themselves, and the choices for the two dropdowns."""
+    days, stat = parse_trend_params(args)
+    return {'charts': build_charts(get_rolling_data(current_user.id, days), stat),
+            'trend_days': days, 'trend_stat': stat, 'day_choices': DAY_CHOICES, 'stat_choices': STAT_CHOICES}
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    return render_template('dashboard.html', user=current_user)
+    return render_template('dashboard.html', user=current_user, **trend_context(request.args))
+
+@app.route('/log/trends')
+@login_required
+def trends():
+    """Your calories, protein, carbs and fat day by day, as graphs. Choose which statistics to show
+    and the last 7, 14, 30, 90, 180 or 365 days. The same graphs appear on the dashboard."""
+    return render_template('trends.html', **trend_context(request.args))
 
 def body_metrics(weight_kg, height_m, age, gender, activity_level):
     """BMI, BMR and TDEE (BMR and TDEE as whole calories/day, halves rounding up).

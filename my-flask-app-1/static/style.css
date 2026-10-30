@@ -342,3 +342,76 @@ button:hover {
 .btn-link:hover {
     background-color: #0056b3;
 }
+/* --- Progress charts (dashboard and trends page) --- */
+.trends {
+    margin: 16px 0;
+}
+
+.trend-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    max-width: none;
+    gap: 12px 20px;
+    margin: 0 auto 16px;
+}
+
+.trend-controls label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.trend-controls select {
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.trend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+}
+
+.trend-grid.single {
+    grid-template-columns: 1fr;
+}
+
+.trend-card {
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+}
+
+.trend-card h3 {
+    margin: 0 0 2px;
+    font-size: 1rem;
+}
+
+.trend-unit {
+    color: #666;
+    font-size: 0.8rem;
+    font-weight: normal;
+}
+
+.trend-summary {
+    margin: 0 0 8px;
+    color: #555;
+    font-size: 0.8rem;
+}
+
+.trend-canvas {
+    position: relative;      /* Chart.js sizes the chart to this box */
+    height: 200px;
+}
+
+#dashboard-trends h2 {
+    text-align: center;
+    margin: 24px 0 0;
+}

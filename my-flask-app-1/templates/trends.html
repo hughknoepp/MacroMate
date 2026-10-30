@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Trends{% endblock %}
+{% block content %}
+<div id="trends-page">
+    <h1>Your Trends</h1>
+    <p class="profile-summary">Calories, protein, carbs and fat for each day. Days with nothing logged are left blank.</p>
+    {% set trend_action = url_for('trends') %}
+    {% include '_trend_charts.html' %}
+    <p class="profile-summary"><a href="{{ url_for('daily_summary') }}">Daily summary</a> &middot; <a href="{{ url_for('dashboard') }}">Dashboard</a></p>
+</div>
+{% endblock %}
+{% block scripts %}{% include '_trend_scripts.html' %}{% endblock %}

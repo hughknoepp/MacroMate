@@ -7,4 +7,12 @@
     <a href="{{ url_for('daily_summary') }}" class="btn-link">Go to Daily Summary</a>
     <a href="{{ url_for('personal_info') }}" class="btn-link">Go to Personal Info</a>
 </div>
+
+<div id="dashboard-trends">
+    <h2>Your Progress</h2>
+    {% set trend_action = url_for('dashboard') %}
+    {% include '_trend_charts.html' %}
+    <p class="profile-summary"><a href="{{ url_for('trends') }}">Open the full trends page</a></p>
+</div>
 {% endblock %}
+{% block scripts %}{% include '_trend_scripts.html' %}{% endblock %}

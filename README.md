@@ -1,6 +1,6 @@
 # MacroMate
 
-A web app for tracking what you eat. Search the USDA food database, log foods by weight, and see your daily calories, protein, carbs and fat, plus rolling averages. A built-in calculator turns your body measurements into BMI, BMR and TDEE, and suggests calorie ranges for losing, maintaining or gaining weight.
+A web app for tracking what you eat. Search the USDA food database, log foods by weight, and see your daily calories, protein, carbs and fat, plus rolling averages and graphs of your progress. A built-in calculator turns your body measurements into BMI, BMR and TDEE, and suggests calorie ranges for losing, maintaining or gaining weight.
 
 Built with Flask, SQLite and the [USDA FoodData Central](https://fdc.nal.usda.gov/) API.
 
@@ -12,6 +12,7 @@ Built with Flask, SQLite and the [USDA FoodData Central](https://fdc.nal.usda.go
 - See any day's logged items and macro totals. Today is at `/log`, and any past day is at `/log/YYYY-MM-DD`.
 - Under the main totals, in smaller print, see sugars, calcium, sodium, iron and the essential vitamins (A, C, D, E, K and the B vitamins: thiamin, riboflavin, niacin, pantothenic acid, B6, folate and B12). The USDA doesn't report every nutrient for every food (packaged foods often list only sugars, minerals and vitamins A, C and D), so a nutrient no logged food reports shows a dash, and one only some foods report is starred because its total may be low.
 - Get rolling averages (1 to 365 days) of calories, protein, carbs and fat. Days with nothing logged count as zero.
+- See **graphs** of your calories, protein, carbs and fat day by day, on the dashboard and on a full trends page. A dropdown chooses which statistics to show (all four, or one) and another chooses the period (last 7, 14, 30, 90, 180 or 365 days). Days with nothing logged are left as gaps, and each graph shows its average, highest day and how many days were logged.
 
 **Personal info calculator**
 - Enter gender, age, weight, height (metric or imperial) and activity level. Every field is required, with exactly one choice per option group.
@@ -55,7 +56,7 @@ Open **http://127.0.0.1:5050**. The database is created automatically on first r
 
 > The app uses port **5050** because on macOS port 5000 is taken by AirPlay Receiver. Use `127.0.0.1` rather than `localhost`.
 
-Run the tests (81 unit tests covering the request pipeline, nutrient extraction, the protein, carb and fat recommendations, and saved personal details) from `my-flask-app-1/`:
+Run the tests (103 unit tests covering the request pipeline, nutrient extraction, the protein, carb and fat recommendations, saved personal details, and the daily data behind the graphs) from `my-flask-app-1/`:
 
 ```bash
 python -m unittest discover -v
@@ -83,6 +84,7 @@ python -m unittest discover -v
 | `/foods/<fdc_id>/log` | POST | Log a food (the form on the search results) |
 | `/log`, `/log/<YYYY-MM-DD>` | GET | Items and macro totals for a day |
 | `/log/averages?days=7` | GET | Rolling averages |
+| `/log/trends?stat=all&days=30` | GET | Graphs of daily calories, protein, carbs and fat (`stat`: `all`, `calories`, `protein`, `carbs` or `fat`; `days`: 7, 14, 30, 90, 180 or 365). The dashboard shows the same graphs. |
 | `/log/items/<id>/delete` | POST | Remove a logged item (see Known limitations) |
 | `/personal-info` | GET | Your saved details with BMI, BMR, TDEE and calorie suggestions |
 | `/personal-info/edit` | GET, POST | Enter or change your personal information (saved to your account) |
@@ -94,7 +96,7 @@ Earlier URLs (`/log/search`, `/log/summary/...`) still work and redirect permane
 
 - **Data model** (`models.py`): `User` has `MealLog`s (one per user per date, enforced by a database constraint), and each `MealLog` has `MealItem`s (food, grams, calories, protein, carbs, fat, plus the sugars, minerals and vitamins the USDA reported for it). Each `User` also has at most one `Profile`: their saved personal details. Existing databases are upgraded automatically at startup.
 - **USDA lookups** (`usda.py`, `pipeline.py`): responses are cached on disk in `usda_cache.sqlite` (search results for 6 hours, a food's nutrient record for 30 days, and your API key is never stored in the cache). Logging a food runs two dependent steps in order, fetching the record and then reading its nutrients. Brief network or server errors are retried, and any failure shows a friendly message instead of an error page.
-- **Calculations** (`nutrition.py`): daily totals, rolling averages (one database query each), BMI, BMR, TDEE and the calorie suggestions.
+- **Calculations** (`nutrition.py`): daily totals, rolling averages and the per-day data for the graphs (one database query each), BMI, BMR, TDEE and the calorie suggestions.
 
 ```
 my-flask-app-1/
@@ -104,11 +106,14 @@ my-flask-app-1/
 ├── nutrition.py      nutrition and body-metric calculations
 ├── micronutrients.py sugars, minerals and vitamins: what is tracked and how it is read
 ├── macros.py         protein, carb and fat recommendations (built to fit together)
+├── trends.py         choices, checking and summaries for the graphs
 ├── usda.py           cached USDA API client
 ├── pipeline.py       runs dependent requests in order, with retries
 ├── config.py         settings (reads .env)
 ├── templates/        Jinja2 pages
 ├── static/style.css  styling
+├── static/trends.js  draws the graphs
+├── static/vendor/    Chart.js (third-party, see below)
 └── tests/            unit tests
 ```
 
@@ -118,5 +123,9 @@ my-flask-app-1/
 - **Database location.** In a standard setup (`.venv` folder) the SQLite database is `instance/app.db`. If you instead create the virtual environment in the project folder itself, Flask puts it at `var/app-instance/app.db`, so deleting that folder (for example, to rebuild the environment) would delete your data.
 - **No delete button yet.** The remove-item route exists, but no page links to it.
 - **No CSRF protection** on forms, and logout is a plain link (GET).
-- **Averages are macros only.** Rolling averages cover calories, protein, carbs and fat, not the sugars, minerals and vitamins.
+- **Graphs and averages are macros only.** They cover calories, protein, carbs and fat, not the sugars, minerals and vitamins.
 - **Units.** Food nutrition comes from the USDA per 100 g, so foods are logged in grams only.
+
+## Third-party code
+
+The graphs are drawn by [Chart.js](https://www.chartjs.org) 4.6.1 (MIT license, copyright the Chart.js contributors). A copy of the browser build is kept in `my-flask-app-1/static/vendor/` with its license, so the app doesn't load anything from another site and works offline. There is nothing to install for it. To upgrade, download the new version from [npm](https://www.npmjs.com/package/chart.js), check its checksum against the one npm publishes, and replace `chart.umd.min.js` and `chart.js-LICENSE.md` in that folder.

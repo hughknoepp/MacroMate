@@ -1,0 +1,37 @@
+{# The progress charts and their two dropdowns. The page that includes this sets `trend_action`
+   (where the dropdowns submit to) and loads _trend_scripts.html in its scripts block. #}
+<section class="trends" id="trends">
+    <form method="GET" action="{{ trend_action }}" class="trend-controls" id="trend-form">
+        <label>Show
+            <select name="stat" aria-label="Which statistics to show">
+                {% for slug, label in stat_choices %}
+                <option value="{{ slug }}"{% if slug == trend_stat %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Period
+            <select name="days" aria-label="How many days to show">
+                {% for n in day_choices %}
+                <option value="{{ n }}"{% if n == trend_days %} selected{% endif %}>Last {{ n }} days</option>
+                {% endfor %}
+            </select>
+        </label>
+        <noscript><button type="submit">Update</button></noscript>
+    </form>
+
+    {# One chart per row when there is only one, or when the period is long enough to need the width #}
+    <div class="trend-grid{% if charts|length == 1 or trend_days >= 90 %} single{% endif %}">
+        {% for chart in charts %}
+        <figure class="trend-card">
+            <figcaption>
+                <h3>{{ chart.label }} <span class="trend-unit">({{ chart.unit }} per day)</span></h3>
+                <p class="trend-summary">{{ chart.summary }}</p>
+            </figcaption>
+            <div class="trend-canvas">
+                <canvas id="chart-{{ chart.slug }}" role="img" aria-label="{{ chart.label }} per day over the last {{ trend_days }} days. {{ chart.summary }}"></canvas>
+            </div>
+        </figure>
+        {% endfor %}
+    </div>
+    <script type="application/json" id="trend-data">{{ charts|tojson }}</script>
+</section>
