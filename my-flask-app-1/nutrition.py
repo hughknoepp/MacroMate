@@ -24,6 +24,37 @@ def get_daily_totals(user_id, log_date = None):
     log_date = log_date or date_type.today()
     return totals_from_items(get_daily_items(user_id, log_date))
 
+def get_rolling_data(user_id, days=7):
+    """Get the total calories/protein/fat/carbs for each of the last `days` days, including today. Days with nothing logged count as zero."""
+    assert days > 0 and isinstance(days, int) # Ensure days is a positive integer
+
+    today = date_type.today()
+    start_date = today - timedelta(days=days - 1)
+    results = (db.session.query(MealLog.date,
+                                func.coalesce(func.sum(MealItem.calories), 0),
+                                func.coalesce(func.sum(MealItem.protein_g), 0),
+                                func.coalesce(func.sum(MealItem.carbs_g), 0),
+                                func.coalesce(func.sum(MealItem.fat_g), 0))
+               .select_from(MealLog)
+               .outerjoin(MealItem, MealItem.meal_log_id == MealLog.id)
+               .filter(MealLog.user_id == user_id, MealLog.date >= start_date, MealLog.date <= today)
+               .group_by(MealLog.date)
+               .order_by(MealLog.date)
+               .all())
+    
+    # Convert results to a dictionary with date keys and totals as values
+    # `result[0]` is the date
+    rolling_data = {result[0]: {'calories': result[1], 'protein_g': result[2], 'carbs_g': result[3], 'fat_g': result[4]} for result in results}
+    
+    # Fill in missing dates with zero totals
+    for i in range(days):
+        day = start_date + timedelta(days=i)
+        if day not in rolling_data:
+            rolling_data[day] = {'calories': 0, 'protein_g': 0, 'carbs_g': 0, 'fat_g': 0}
+    
+    return rolling_data
+
+
 def get_rolling_average(user_id, days=7):
     """Calculate the rolling average of calories/protein/fat/carbs over the last `days` days.
 
@@ -52,53 +83,6 @@ def get_rolling_average(user_id, days=7):
         'carbs_g': carbs_g / days,
         'fat_g': fat_g / days,
     }
-
-def get_rolling_data(user_id, days=7):
-    """Daily calories/protein/carbs/fat for each of the last `days` days, oldest first, ending today.
-
-    Returns exactly `days` dicts, one per calendar day, so a day with nothing logged still appears
-    (as zeros, with 'logged' False) and the list can be charted as it stands:
-
-        {'date': date, 'calories': float, 'protein_g': float, 'carbs_g': float, 'fat_g': float,
-         'logged': bool}
-
-    'logged' is True if at least one food was logged that day. This is one grouped query, not one
-    per day, so a year costs the same as a week.
-    """
-    assert days > 0 and isinstance(days, int) # Ensure days is a positive integer
-
-    today = date_type.today()
-    first_day = today - timedelta(days=days - 1)
-    rows = (
-        db.session.query(
-            MealLog.date,
-            func.coalesce(func.sum(MealItem.calories), 0),
-            func.coalesce(func.sum(MealItem.protein_g), 0),
-            func.coalesce(func.sum(MealItem.carbs_g), 0),
-            func.coalesce(func.sum(MealItem.fat_g), 0),
-            func.count(MealItem.id),
-        )
-        .select_from(MealLog)
-        .join(MealItem, MealItem.meal_log_id == MealLog.id)
-        .filter(MealLog.user_id == user_id, MealLog.date >= first_day, MealLog.date <= today)
-        .group_by(MealLog.date)
-        .all()
-    )
-    by_date = {row[0]: row for row in rows}
-
-    data = []
-    for offset in range(days):
-        day = first_day + timedelta(days=offset)
-        row = by_date.get(day)
-        data.append({
-            'date': day,
-            'calories': float(row[1]) if row else 0.0,
-            'protein_g': float(row[2]) if row else 0.0,
-            'carbs_g': float(row[3]) if row else 0.0,
-            'fat_g': float(row[4]) if row else 0.0,
-            'logged': bool(row and row[5]),
-        })
-    return data
 
 def calculate_bmi(weight_kg, height_m):
     """Calculates BMI given weight in kilograms and height in meters. Requires that `0 < weight_kg < 635` and `0 < height_m < 2.72`."""
