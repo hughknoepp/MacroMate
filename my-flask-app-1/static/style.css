@@ -415,3 +415,45 @@ button:hover {
     text-align: center;
     margin: 24px 0 0;
 }
+
+/* --- Logged items, each with a Remove button --- */
+.items-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 16px;
+}
+
+.items-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.items-list li:last-child {
+    border-bottom: none;
+}
+
+.items-list li > span {
+    min-width: 0;
+    overflow-wrap: anywhere;     /* long USDA food names wrap instead of pushing the button off */
+}
+
+form.item-delete {
+    display: block;
+    flex: none;
+    margin: 0;
+    max-width: none;
+}
+
+.item-delete button {
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    background-color: #b3261e;
+}
+
+.item-delete button:hover {
+    background-color: #8c1d18;
+}

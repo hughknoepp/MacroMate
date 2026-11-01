@@ -10,6 +10,7 @@ Built with Flask, SQLite and the [USDA FoodData Central](https://fdc.nal.usda.go
 - Search thousands of foods through the USDA FoodData Central API.
 - Log any food by weight in grams. Calories, protein, carbs and fat are scaled from the USDA's per-100 g values.
 - See any day's logged items and macro totals. Today is at `/log`, and any past day is at `/log/YYYY-MM-DD`.
+- Remove a mistaken entry with the **Remove** button beside it (after a confirmation). Only your own items can be removed, and you land back on the same day.
 - Under the main totals, in smaller print, see sugars, calcium, sodium, iron and the essential vitamins (A, C, D, E, K and the B vitamins: thiamin, riboflavin, niacin, pantothenic acid, B6, folate and B12). The USDA doesn't report every nutrient for every food (packaged foods often list only sugars, minerals and vitamins A, C and D), so a nutrient no logged food reports shows a dash, and one only some foods report is starred because its total may be low.
 - Get rolling averages (1 to 365 days) of calories, protein, carbs and fat. Days with nothing logged count as zero.
 - See **graphs** of your calories, protein, carbs and fat day by day, on the dashboard and on a full trends page. A dropdown chooses which statistics to show (all four, or one) and another chooses the period (last 7, 14, 30, 90, 180 or 365 days). Days with nothing logged are left as gaps, and each graph shows its average, highest day and how many days were logged.
@@ -85,7 +86,7 @@ python -m unittest discover -v
 | `/log`, `/log/<YYYY-MM-DD>` | GET | Items and macro totals for a day |
 | `/log/averages?days=7` | GET | Rolling averages |
 | `/log/trends?stat=all&days=30` | GET | Graphs of daily calories, protein, carbs and fat (`stat`: `all`, `calories`, `protein`, `carbs` or `fat`; `days`: 7, 14, 30, 90, 180 or 365). The dashboard shows the same graphs. |
-| `/log/items/<id>/delete` | POST | Remove a logged item (see Known limitations) |
+| `/log/items/<id>/delete` | POST | Remove a logged item (the Remove button beside each item on the day's page) |
 | `/personal-info` | GET | Your saved details with BMI, BMR, TDEE and calorie suggestions |
 | `/personal-info/edit` | GET, POST | Enter or change your personal information (saved to your account) |
 | `/recommendations/protein`, `/recommendations/carbs`, `/recommendations/fats` | GET | Daily targets for each macronutrient (need your saved personal info) |
@@ -121,7 +122,6 @@ my-flask-app-1/
 
 - **Development server only.** `app.py` runs Flask with `debug=True`. Do not expose it publicly as is.
 - **Database location.** In a standard setup (`.venv` folder) the SQLite database is `instance/app.db`. If you instead create the virtual environment in the project folder itself, Flask puts it at `var/app-instance/app.db`, so deleting that folder (for example, to rebuild the environment) would delete your data.
-- **No delete button yet.** The remove-item route exists, but no page links to it.
 - **No CSRF protection** on forms, and logout is a plain link (GET).
 - **Graphs and averages are macros only.** They cover calories, protein, carbs and fat, not the sugars, minerals and vitamins.
 - **Units.** Food nutrition comes from the USDA per 100 g, so foods are logged in grams only.

@@ -450,6 +450,7 @@ def summary_context(parsed_date):
     """Everything summary.html needs to render one day's totals and items."""
     items = get_daily_items(current_user.id, parsed_date)  # one query; totals come from these
     return {'totals': totals_from_items(items), 'date': parsed_date, 'items': items,
+            'is_today': parsed_date == date_type.today(),
             'micronutrient_groups': group_rows(micronutrient_totals(items))}
 
 app.add_template_filter(format_amount, 'amount')
@@ -476,24 +477,31 @@ def rolling_average():
                            **summary_context(date_type.today()))
 
 def delete_meal_item(item_id, user_id):
+    """Remove one logged item. Returns the date it was logged on, or None if there is no such
+    item (or it belongs to someone else, which looks the same from outside)."""
     # One query that only matches the item if it belongs to this user's logs
-    item = (MealItem.query.join(MealLog)
-            .filter(MealItem.id == item_id, MealLog.user_id == user_id)
-            .first())
-    if item is None:
-        return False
+    row = (db.session.query(MealItem, MealLog.date).join(MealLog)
+           .filter(MealItem.id == item_id, MealLog.user_id == user_id)
+           .first())
+    if row is None:
+        return None
+    item, logged_on = row
     db.session.delete(item)
     db.session.commit()
-    return True
+    return logged_on
 
 @app.route('/log/items/<int:item_id>/delete', methods=['POST'])
 @login_required
 def remove_food(item_id):
-    if delete_meal_item(item_id, user_id=current_user.id):
-        flash('Item removed')
-    else:
+    logged_on = delete_meal_item(item_id, user_id=current_user.id)
+    if logged_on is None:
         flash('Could not remove that item')
-    return redirect(url_for('daily_summary'))
+        return redirect(url_for('daily_summary'))
+    flash('Item removed')
+    # Back to the day it was removed from, not always today
+    if logged_on == date_type.today():
+        return redirect(url_for('daily_summary'))
+    return redirect(url_for('daily_summary', log_date=logged_on))
 
 # --- Legacy URLs ---
 # These were the original paths. They permanently redirect to the current ones so that
