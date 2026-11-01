@@ -512,8 +512,7 @@ def remove_food(item_id):
         flash('Could not remove that item')
         return redirect(url_for('daily_summary'))
     flash('Item removed' if status == 'removed'
-          else f'Foods can only be removed for {REMOVAL_GRACE_DAYS} days after they are logged, '
-               'so older days stay accurate.')
+          else f'Foods can only be removed for {REMOVAL_GRACE_DAYS} days after they are logged.')
     # Back to the day the item is on, not always today
     if logged_on == date_type.today():
         return redirect(url_for('daily_summary'))
