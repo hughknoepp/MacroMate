@@ -11,13 +11,19 @@
             {% for item in items %}
                 <li>
                     <span>{{ item.food_name }}: {{ item.quantity_g }}g</span>
-                    <form class="item-delete" method="POST" action="{{ url_for('remove_food', item_id=item.id) }}"
-                          onsubmit='return confirm({{ ("Remove " ~ item.food_name ~ " from your log?")|tojson }})'>
-                        <button type="submit" aria-label="Remove {{ item.food_name }}">Remove</button>
-                    </form>
+                    {# Recent days only; older days are locked (the route enforces this too) #}
+                    {% if can_remove %}
+                        <form class="item-delete" method="POST" action="{{ url_for('remove_food', item_id=item.id) }}"
+                              onsubmit='return confirm({{ ("Remove " ~ item.food_name ~ " from your log?")|tojson }})'>
+                            <button type="submit" aria-label="Remove {{ item.food_name }}">Remove</button>
+                        </form>
+                    {% endif %}
                 </li>
             {% endfor %}
         </ul>
+        {% if not can_remove %}
+        <p class="micro-note">Foods can be removed for {{ grace_days }} days after they are logged. This day is locked.</p>
+        {% endif %}
     {% endif %}
     <ul class="totals-list">
         <li><span>Calories</span><span>{{ '%.0f'|format(totals.calories) }}</span></li>

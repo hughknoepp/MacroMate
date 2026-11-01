@@ -451,6 +451,7 @@ def summary_context(parsed_date):
     items = get_daily_items(current_user.id, parsed_date)  # one query; totals come from these
     return {'totals': totals_from_items(items), 'date': parsed_date, 'items': items,
             'is_today': parsed_date == date_type.today(),
+            'can_remove': can_remove_from(parsed_date), 'grace_days': REMOVAL_GRACE_DAYS,
             'micronutrient_groups': group_rows(micronutrient_totals(items))}
 
 app.add_template_filter(format_amount, 'amount')
@@ -476,29 +477,44 @@ def rolling_average():
     return render_template('summary.html', averages=averages, num_days=days,
                            **summary_context(date_type.today()))
 
+# A logged food can be removed for this many days after the day it was logged (so recent mistakes
+# can be fixed), but older days are locked so the history behind averages, graphs and suggestions
+# can't be rewritten.
+REMOVAL_GRACE_DAYS = 3
+
+def can_remove_from(log_date):
+    """Whether foods logged on `log_date` can still be removed."""
+    return (date_type.today() - log_date).days <= REMOVAL_GRACE_DAYS
+
 def delete_meal_item(item_id, user_id):
-    """Remove one logged item. Returns the date it was logged on, or None if there is no such
-    item (or it belongs to someone else, which looks the same from outside)."""
+    """Remove one logged item, if it was logged within the last REMOVAL_GRACE_DAYS days.
+
+    Returns 'removed', 'locked' (logged too long ago) or 'missing' (no such item, or it belongs to
+    someone else, which looks the same from outside), plus the date it was logged on."""
     # One query that only matches the item if it belongs to this user's logs
     row = (db.session.query(MealItem, MealLog.date).join(MealLog)
            .filter(MealItem.id == item_id, MealLog.user_id == user_id)
            .first())
     if row is None:
-        return None
+        return 'missing', None
     item, logged_on = row
+    if not can_remove_from(logged_on):
+        return 'locked', logged_on
     db.session.delete(item)
     db.session.commit()
-    return logged_on
+    return 'removed', logged_on
 
 @app.route('/log/items/<int:item_id>/delete', methods=['POST'])
 @login_required
 def remove_food(item_id):
-    logged_on = delete_meal_item(item_id, user_id=current_user.id)
-    if logged_on is None:
+    status, logged_on = delete_meal_item(item_id, user_id=current_user.id)
+    if status == 'missing':
         flash('Could not remove that item')
         return redirect(url_for('daily_summary'))
-    flash('Item removed')
-    # Back to the day it was removed from, not always today
+    flash('Item removed' if status == 'removed'
+          else f'Foods can only be removed for {REMOVAL_GRACE_DAYS} days after they are logged, '
+               'so older days stay accurate.')
+    # Back to the day the item is on, not always today
     if logged_on == date_type.today():
         return redirect(url_for('daily_summary'))
     return redirect(url_for('daily_summary', log_date=logged_on))
